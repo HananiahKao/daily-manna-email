@@ -65,29 +65,18 @@ def _lesson_url(base: str, volume: int, lesson: int) -> str:
 
 
 def _collect_until_next_day(start_node: Tag, day_texts: List[str]) -> List[Tag]:
+    # Simple and robust approach: iterate forward siblings until we reach a next-day label
     collected: List[Tag] = []
-    for sib in start_node.parent.find_all(recursive=False):
-        # iterate siblings at same container level, starting from the day node's parent onward
-        if sib is start_node.parent:
-            # include the day node itself and following siblings within this parent
-            include = False
-            for child in sib.children:
-                if isinstance(child, NavigableString):
-                    continue
-                if child is start_node:
-                    include = True
-                    continue
-                if include:
-                    # stop if we hit the next day header
-                    if child.get_text(strip=True) in day_texts:
-                        return collected
-                    collected.append(child)
-        else:
-            # after the day node's parent, keep collecting top-level siblings until next day label appears
-            text = sib.get_text(strip=True)
-            if text in day_texts:
-                break
-            collected.append(sib)
+    node = start_node.next_sibling
+    while node is not None:
+        if isinstance(node, NavigableString):
+            node = node.next_sibling
+            continue
+        text = node.get_text(strip=True)
+        if text in day_texts:
+            break
+        collected.append(node)
+        node = node.next_sibling
     return collected
 
 

@@ -7,6 +7,7 @@ Agent Guidelines for This Repo
 - Commit etiquette:
   - Ask for approval before committing.
   - Do not push unless explicitly requested.
+  - Always stage files explicitly (no blanket `git add -A`). Use `git add <path>` for only the intended files to avoid committing local envs/venv. Prefer `git status` to verify before committing.
 
 - Coding style:
   - Keep changes minimal and focused on the task.
@@ -16,3 +17,5 @@ Agent Guidelines for This Repo
 - Environment:
   - Support configuration via environment variables where applicable.
 
+- VCS hygiene:
+  - Do not commit `.venv/`, `.env`, `.sjzl_env`, or other local-only artifacts. If needed, update `.gitignore` first.

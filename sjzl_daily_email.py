@@ -29,7 +29,7 @@ import logging
 import datetime as dt
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Optional as TypingOptional
 from urllib.parse import urljoin
 
 import requests
@@ -192,7 +192,7 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
 
 # -------- Email sending --------
 
-def send_email(subject: str, body: str, html_body: str | None = None) -> None:
+def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -> None:
     """
     Send email using SMTP with STARTTLS or SSL based on TLS_MODE.
     """

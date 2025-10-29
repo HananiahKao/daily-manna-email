@@ -1,0 +1,7 @@
+# Local virtualenvs and environment files
+.venv/
+.env
+.sjzl_env
+__pycache__/
+*.pyc
+.pytest_cache/
