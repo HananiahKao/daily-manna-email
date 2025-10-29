@@ -38,6 +38,9 @@ from bs4 import BeautifulSoup
 # -------- Config & Logging --------
 
 SJZL_BASE = os.getenv("SJZL_BASE", "https://four.soqimp.com/books/2264")
+# Optional alternate source: ezoe.work via standardized selector "<volume>-<lesson>-<day>".
+EZOe_SELECTOR = os.getenv("EZOE_SELECTOR")  # e.g., "2-1-3" (周三)
+EZOe_BASE = os.getenv("EZOE_BASE", "https://ezoe.work/books/2")
 INDEX_PATTERN = re.compile(r"^index(\d{2})\.html$")  # e.g., index12.html
 LESSON_PATTERN = re.compile(r"^(\d{2,3})\.html$")    # e.g., 210.html
 
@@ -189,7 +192,7 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
 
 # -------- Email sending --------
 
-def send_email(subject: str, body: str) -> None:
+def send_email(subject: str, body: str, html_body: str | None = None) -> None:
     """
     Send email using SMTP with STARTTLS or SSL based on TLS_MODE.
     """
@@ -202,12 +205,20 @@ def send_email(subject: str, body: str) -> None:
     recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
     tls_mode = os.getenv("TLS_MODE", "starttls").lower()
 
-    msg = MIMEMultipart()
+    if html_body:
+        msg = MIMEMultipart("alternative")
+    else:
+        msg = MIMEMultipart()
     msg["From"] = email_from
     msg["To"] = ", ".join(recipients)
     msg["Subject"] = subject
 
-    msg.attach(MIMEText(body, "plain", "utf-8"))
+    if html_body:
+        # Plain-text fallback + HTML part
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+    else:
+        msg.attach(MIMEText(body, "plain", "utf-8"))
 
     try:
         if tls_mode == "ssl":
@@ -230,8 +241,49 @@ def send_email(subject: str, body: str) -> None:
 # -------- Main job --------
 
 def run_once() -> int:
-    """Fetch the latest lesson and email it. Returns exit code."""
+    """Fetch content and email it. Returns exit code.
+
+    Modes:
+      - Default (SJZL): discover latest from four.soqimp.com and send plain text.
+      - Selector HTML mode (EZOE_SELECTOR set): fetch ezoe.work lesson day HTML and send rich HTML with plain-text fallback.
+    """
     today = dt.datetime.now().strftime("%Y-%m-%d")
+    # If selector mode is enabled, use ezoe scraper
+    if EZOe_SELECTOR:
+        try:
+            from ezoe_week_scraper import get_day_html  # local module
+        except Exception as imp_exc:
+            logger.error("Failed to import ezoe_week_scraper: %s", imp_exc)
+            return 1
+
+        try:
+            html_day = get_day_html(EZOe_SELECTOR, base=EZOe_BASE)
+        except Exception as e:
+            logger.error("Failed to fetch ezoe day HTML for selector %s: %s", EZOe_SELECTOR, e)
+            return 2
+
+        # Build subject and minimal plain-text fallback; also provide source URL hint
+        # Derive source URL based on selector
+        try:
+            vol, les, day = EZOe_SELECTOR.split("-")
+            source_url = f"{EZOe_BASE.rstrip('/')}/2264-{int(vol)}-{int(les)}.html"
+        except Exception:
+            source_url = EZOe_BASE
+
+        # Extract a simple title from HTML
+        try:
+            from bs4 import BeautifulSoup as _BS
+            _s = _BS(html_day, "html.parser")
+            title_tag = _s.find(["h1", "h2", "h3"]) or _s.find("title")
+            title = title_tag.get_text(strip=True) if title_tag else "圣经之旅 每日内容"
+        except Exception:
+            title = "圣经之旅 每日内容"
+
+        subject = f"圣经之旅 | {title} | {today}"
+        body = f"来源: {source_url}\n日期: {today}\n(HTML 邮件包含完整内容)"
+        send_email(subject, body, html_body=html_day)
+        logger.info("HTML email (ezoe) sent to %s", os.environ.get("EMAIL_TO", ""))
+        return 0
     # Allow override for testing SMTP without discovery/fetch variability
     test_url = os.getenv("TEST_LESSON_URL")
     if test_url:
