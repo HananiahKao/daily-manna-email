@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Scraper for ezoe.work '圣经之旅' daily sections.
+Scraper for ezoe.work '聖經之旅' daily sections.
 
 Exports:
   get_day_html(selector: str, base: str = 'https://ezoe.work/books/2') -> str
@@ -170,4 +170,3 @@ if __name__ == "__main__":
     except Exception as e:
         sys.stderr.write(f"Error: {e}\n")
         sys.exit(1)
-

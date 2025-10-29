@@ -3,7 +3,7 @@
 """
 Daily 'Shen Jing Zhi Li' fetcher and emailer.
 
-- Discovers the latest available '圣经之旅' lesson under:
+- Discovers the latest available '聖經之旅' lesson under:
   https://four.soqimp.com/books/2264/
 - Fetches the lesson page HTML, extracts readable text (title + content).
 - Sends an email with the text content.
@@ -39,7 +39,7 @@ from bs4 import BeautifulSoup
 
 SJZL_BASE = os.getenv("SJZL_BASE", "https://four.soqimp.com/books/2264")
 # Optional alternate source: ezoe.work via standardized selector "<volume>-<lesson>-<day>".
-EZOe_SELECTOR = os.getenv("EZOE_SELECTOR")  # e.g., "2-1-3" (周三)
+EZOe_SELECTOR = os.getenv("EZOE_SELECTOR")  # e.g., "2-1-3" (週三)
 EZOe_BASE = os.getenv("EZOE_BASE", "https://ezoe.work/books/2")
 INDEX_PATTERN = re.compile(r"^index(\d{2})\.html$")  # e.g., index12.html
 LESSON_PATTERN = re.compile(r"^(\d{2,3})\.html$")    # e.g., 210.html
@@ -168,7 +168,7 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
     elif soup.title and soup.title.get_text(strip=True):
         title = soup.title.get_text(strip=True)
     else:
-        title = "圣经之旅 - 每日内容"
+        title = "聖經之旅 - 每日內容"
 
     for sel in ["script", "style", "nav", "footer", "iframe"]:
         for tag in soup.select(sel):
@@ -275,12 +275,12 @@ def run_once() -> int:
             from bs4 import BeautifulSoup as _BS
             _s = _BS(html_day, "html.parser")
             title_tag = _s.find(["h1", "h2", "h3"]) or _s.find("title")
-            title = title_tag.get_text(strip=True) if title_tag else "圣经之旅 每日内容"
+            title = title_tag.get_text(strip=True) if title_tag else "聖經之旅 每日內容"
         except Exception:
-            title = "圣经之旅 每日内容"
+            title = "聖經之旅 每日內容"
 
-        subject = f"圣经之旅 | {title} | {today}"
-        body = f"来源: {source_url}\n日期: {today}\n(HTML 邮件包含完整内容)"
+        subject = f"聖經之旅 | {title} | {today}"
+        body = f"來源: {source_url}\n日期: {today}\n(HTML 郵件包含完整內容)"
         send_email(subject, body, html_body=html_day)
         logger.info("HTML email (ezoe) sent to %s", os.environ.get("EMAIL_TO", ""))
         return 0
@@ -303,8 +303,8 @@ def run_once() -> int:
         return 3
 
     title, text_body = extract_readable_text(html)
-    subject = f"圣经之旅 | 第 {lesson_num if lesson_num!=-1 else '测试'} 课 | {today}"
-    body = f"{title}\n链接: {lesson_url}\n日期: {today}\n\n{text_body}"
+    subject = f"聖經之旅 | 第 {lesson_num if lesson_num!=-1 else '測試'} 課 | {today}"
+    body = f"{title}\n連結: {lesson_url}\n日期: {today}\n\n{text_body}"
 
     send_email(subject, body)
     logger.info("Email sent to %s", os.environ.get("EMAIL_TO", ""))
