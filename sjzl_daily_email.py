@@ -205,20 +205,17 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -
     recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
     tls_mode = os.getenv("TLS_MODE", "starttls").lower()
 
-    if html_body:
-        msg = MIMEMultipart("alternative")
-    else:
-        msg = MIMEMultipart()
+    # Always send multipart/alternative so clients can choose best part
+    msg = MIMEMultipart("alternative")
     msg["From"] = email_from
     msg["To"] = ", ".join(recipients)
     msg["Subject"] = subject
 
+    # Plain-text fallback part
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+    # Optional HTML part for richer formatting
     if html_body:
-        # Plain-text fallback + HTML part
-        msg.attach(MIMEText(body, "plain", "utf-8"))
         msg.attach(MIMEText(html_body, "html", "utf-8"))
-    else:
-        msg.attach(MIMEText(body, "plain", "utf-8"))
 
     try:
         if tls_mode == "ssl":
@@ -303,10 +300,28 @@ def run_once() -> int:
         return 3
 
     title, text_body = extract_readable_text(html)
+    # Build simple HTML email from extracted text
+    import html as _html
+    def _to_html(title: str, url: str, date_str: str, text_body: str) -> str:
+        esc = _html.escape
+        paras = "".join(f"<p>{esc(p)}</p>" for p in text_body.split("\n\n") if p.strip())
+        return f"""
+        <!doctype html>
+        <html><head><meta charset='utf-8'/>
+        <meta name='viewport' content='width=device-width, initial-scale=1'/>
+        <style>body{{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5;color:#111}}
+        a{{color:#0b65c6;text-decoration:none}}</style></head>
+        <body><div style='max-width:720px;margin:16px auto;padding:0 12px;'>
+        <h1>{esc(title)}</h1>
+        <div style='color:#666;font-size:12px;margin-bottom:16px;'>日期: {esc(date_str)} · <a href='{esc(url)}'>原文链接</a></div>
+        {paras}
+        </div></body></html>
+        """
+    html_body = _to_html(title, lesson_url, today, text_body)
     subject = f"聖經之旅 | 第 {lesson_num if lesson_num!=-1 else '測試'} 課 | {today}"
     body = f"{title}\n連結: {lesson_url}\n日期: {today}\n\n{text_body}"
 
-    send_email(subject, body)
+    send_email(subject, body, html_body=html_body)
     logger.info("Email sent to %s", os.environ.get("EMAIL_TO", ""))
     return 0
 
