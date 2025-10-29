@@ -29,6 +29,10 @@ import logging
 import datetime as dt
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.header import Header
+from email.utils import formataddr
+from email import encoders
+from email.charset import Charset, QP
 from typing import Optional, Tuple, List, Optional as TypingOptional
 from urllib.parse import urljoin
 
@@ -57,15 +61,69 @@ logging.basicConfig(
 logger = logging.getLogger("sjzl-daily")
 
 
+def _debug_enabled() -> bool:
+    return os.getenv("DEBUG_EMAIL") not in (None, "", "0", "false", "False")
+
+
+def _debug_preview(label: str, text: str) -> None:
+    if not _debug_enabled():
+        return
+    try:
+        head = (text or "")[:200]
+        rhead = repr((text or ""))[:240]
+        logger.info("DEBUG %s (first200): %s", label, head)
+        logger.info("DEBUG %s (repr200): %s", label, rhead)
+        logger.info("DEBUG %s length: %s", label, len(text or ""))
+    except Exception as _e:
+        logger.info("DEBUG %s (error previewing): %s", label, _e)
+
+
 # -------- HTTP helpers --------
 
+def _decode_html(resp: requests.Response, url: str = "") -> Optional[str]:
+    """Robustly decode HTML bytes to Unicode, preferring declared/meta charset, fallback UTF-8."""
+    if resp.status_code != 200 or "text/html" not in resp.headers.get("Content-Type", ""):
+        return None
+    data = resp.content or b""
+    # Force UTF-8 for known hosts that serve UTF-8 without clear headers
+    try:
+        from urllib.parse import urlparse as _urlparse
+        host = _urlparse(url).hostname or ""
+    except Exception:
+        host = ""
+    if host.endswith("soqimp.com"):
+        try:
+            return data.decode("utf-8", errors="replace")
+        except Exception:
+            pass
+    # Try requests-detected encoding first
+    enc = resp.encoding
+    if not enc:
+        # Sniff from meta charset
+        try:
+            head = data[:2048].decode("ascii", errors="ignore")
+            import re as _re
+            m = _re.search(r"charset=([A-Za-z0-9_\-]+)", head, _re.I)
+            if m:
+                enc = m.group(1).strip()
+        except Exception:
+            enc = None
+    if not enc:
+        enc = "utf-8"
+    try:
+        return data.decode(enc, errors="replace")
+    except LookupError:
+        return data.decode("utf-8", errors="replace")
+
+
 def fetch(url: str) -> Optional[str]:
-    """GET a URL and return its text body, with simple retries."""
+    """GET a URL and return its HTML text, with simple retries and robust decoding."""
     for attempt in range(1, HTTP_RETRIES + 1):
         try:
             resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-            if resp.status_code == 200 and "text/html" in resp.headers.get("Content-Type", ""):
-                return resp.text
+            html = _decode_html(resp, url)
+            if html is not None:
+                return html
             logger.warning("Attempt %s: Non-200 or non-HTML from %s: %s", attempt, url, resp.status_code)
         except requests.RequestException as e:
             logger.error("Attempt %s: Request failed for %s: %s", attempt, url, e)
@@ -209,13 +267,19 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -
     msg = MIMEMultipart("alternative")
     msg["From"] = email_from
     msg["To"] = ", ".join(recipients)
-    msg["Subject"] = subject
+    # RFC 2047 encode the subject to avoid mojibake in some clients
+    msg["Subject"] = str(Header(subject, "utf-8"))
+    # Optional language hint
+    msg["Content-Language"] = os.getenv("CONTENT_LANGUAGE", "zh-Hant")
 
-    # Plain-text fallback part
-    msg.attach(MIMEText(body, "plain", "utf-8"))
+    # Plain-text fallback part (let library choose safe encoding)
+    text_part = MIMEText(body, "plain", "utf-8")
+    msg.attach(text_part)
     # Optional HTML part for richer formatting
     if html_body:
-        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        html_part = MIMEText(html_body, "html", "utf-8")
+        # Let library choose transfer encoding to avoid duplicate headers
+        msg.attach(html_part)
 
     try:
         if tls_mode == "ssl":
@@ -258,8 +322,9 @@ def run_once() -> int:
         except Exception as e:
             logger.error("Failed to fetch ezoe day HTML for selector %s: %s", EZOe_SELECTOR, e)
             return 2
+        _debug_preview("EZOE_HTML", html_day)
 
-        # Build subject and minimal plain-text fallback; also provide source URL hint
+        # Build subject and plain-text fallback derived from same HTML; also provide source URL hint
         # Derive source URL based on selector
         try:
             vol, les, day = EZOe_SELECTOR.split("-")
@@ -277,7 +342,25 @@ def run_once() -> int:
             title = "聖經之旅 每日內容"
 
         subject = f"聖經之旅 | {title} | {today}"
-        body = f"來源: {source_url}\n日期: {today}\n(HTML 郵件包含完整內容)"
+        try:
+            from bs4 import BeautifulSoup as _BS
+            _s2 = _BS(html_day, "html.parser")
+            for sel in ["script", "style", "nav", "footer", "iframe"]:
+                for t in _s2.select(sel):
+                    t.decompose()
+            snippets = []
+            for el in _s2.find_all(["p", "li", "h1", "h2", "h3"]):
+                txt = el.get_text(" ", strip=True)
+                if txt:
+                    snippets.append(txt)
+            preview = "\n\n".join(snippets)
+            if len(preview) > 1200:
+                preview = preview[:1200] + "…"
+        except Exception:
+            preview = "(純文字預覽不可用；請查看 HTML 內容)"
+        _debug_preview("EZOE_TEXT_PREVIEW", preview)
+        body = f"來源: {source_url}\n日期: {today}\n\n{preview}"
+        _debug_preview("EZOE_BODY", body)
         send_email(subject, body, html_body=html_day)
         logger.info("HTML email (ezoe) sent to %s", os.environ.get("EMAIL_TO", ""))
         return 0
@@ -318,8 +401,12 @@ def run_once() -> int:
         </div></body></html>
         """
     html_body = _to_html(title, lesson_url, today, text_body)
+    _debug_preview("SJZL_TEXT_BODY", text_body)
+    _debug_preview("SJZL_HTML_BODY", html_body)
     subject = f"聖經之旅 | 第 {lesson_num if lesson_num!=-1 else '測試'} 課 | {today}"
     body = f"{title}\n連結: {lesson_url}\n日期: {today}\n\n{text_body}"
+    _debug_preview("SJZL_SUBJECT", subject)
+    _debug_preview("SJZL_BODY", body)
 
     send_email(subject, body, html_body=html_body)
     logger.info("Email sent to %s", os.environ.get("EMAIL_TO", ""))

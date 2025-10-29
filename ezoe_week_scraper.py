@@ -47,14 +47,34 @@ DAY_LABELS = {
 }
 
 
+def _decode_html(resp: requests.Response) -> Optional[str]:
+    if resp.status_code != 200 or "text/html" not in resp.headers.get("Content-Type", ""):
+        return None
+    data = resp.content or b""
+    enc = resp.encoding
+    if not enc:
+        try:
+            head = data[:2048].decode("ascii", errors="ignore")
+            import re as _re
+            m = _re.search(r"charset=([A-Za-z0-9_\-]+)", head, _re.I)
+            if m:
+                enc = m.group(1).strip()
+        except Exception:
+            enc = None
+    if not enc:
+        enc = "utf-8"
+    try:
+        return data.decode(enc, errors="replace")
+    except LookupError:
+        return data.decode("utf-8", errors="replace")
+
+
 def _fetch(url: str) -> Optional[str]:
     try:
         resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-        if resp.status_code == 200 and "text/html" in resp.headers.get("Content-Type", ""):
-            return resp.text
+        return _decode_html(resp)
     except requests.RequestException:
         return None
-    return None
 
 
 def _lesson_url(base: str, volume: int, lesson: int) -> str:
