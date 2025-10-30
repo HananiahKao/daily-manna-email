@@ -2,9 +2,8 @@ Daily Manna Email（聖經之旅每日郵件）
 
 Overview
 - Fetches the latest “聖經之旅” lesson and emails a readable version daily.
-- Supports two sources/modes:
-  - SJZL discovery mode: discovers the latest lesson under `https://four.soqimp.com/books/2264` and sends a plain‑text email.
-  - Ezoe selector mode: fetches a specific day’s HTML from ezoe.work and sends a rich HTML email with a plain‑text fallback.
+- Default: Ezoe selector mode — fetches a specific day’s HTML from ezoe.work and sends a rich HTML email with a plain‑text fallback.
+- Legacy: SJZL discovery mode — discovers the latest lesson under `https://four.soqimp.com/books/2264` and sends a plain‑text email.
 
 Repository Layout
 - `sjzl_daily_email.py` — Main scheduler-friendly script that discovers content, extracts text, and sends email via SMTP.
@@ -30,18 +29,19 @@ Set the following environment variables (for local dev you can put them in `.env
 - `EMAIL_TO` — Comma‑separated recipient list.
 - `TLS_MODE` — `starttls` (default) or `ssl`.
 
-Content source and mode selection:
-- Default SJZL discovery mode (plain text):
-  - Uses `SJZL_BASE` (default `https://four.soqimp.com/books/2264`).
-  - Discovers the latest lesson by scanning `indexXX.html` and picking the highest numbered lesson.
-
-- Ezoe selector HTML mode (rich HTML):
+Content source and mode selection (default: Ezoe):
+- Ezoe selector HTML mode (default; rich HTML):
   - Set `EZOE_SELECTOR` to a standardized selector: `"<volume>-<lesson>-<day>"`.
     - `volume`: integer (e.g., for file `2264-2-1.html`, volume is `2`).
     - `lesson`: integer (1‑based lesson index within the volume, e.g., `1`).
     - `day`: `0..7` where `1..7` map to `周一..主日` and `0` returns the combined lesson content.
   - Optional `EZOE_BASE` (default `https://ezoe.work/books/2`).
-  - In this mode, the email is HTML with a minimal plain‑text fallback.
+  - Note: When `EZOE_SELECTOR` is set, the program runs in ezoe mode and ignores `SJZL_BASE`.
+  - Fallback: If the requested day label is not found on the page, the program automatically falls back to sending the combined lesson (day 0) and inserts a small notice at the top of the HTML.
+
+- Legacy SJZL discovery mode (plain text):
+  - Uses `SJZL_BASE` (default `https://four.soqimp.com/books/2264`).
+  - Discovers the latest lesson by scanning `indexXX.html` and picking the highest numbered lesson.
 
 Optional testing helpers:
 - `TEST_LESSON_URL` — Override the discovered lesson URL (useful for deterministic tests). When set, the subject shows `測試`.
@@ -53,12 +53,13 @@ Run
   - Exit code `0` on success; non‑zero on error.
 
 Examples
-- Plain‑text latest lesson email (default SJZL mode):
+- HTML day email (default Ezoe mode):
   - `export SMTP_HOST=... SMTP_USER=... SMTP_PASSWORD=... EMAIL_TO=me@example.com`
+  - `export EZOE_SELECTOR=2-1-3`  # Volume 2, lesson 1, 周三
   - `python sjzl_daily_email.py`
 
-- HTML day email (Ezoe selector mode):
-  - `export EZOE_SELECTOR=2-1-3`  # Volume 2, lesson 1, 周三
+- Plain‑text latest lesson email (legacy SJZL mode):
+  - `unset EZOE_SELECTOR`  # ensure legacy mode
   - `python sjzl_daily_email.py`
 
 Scheduling

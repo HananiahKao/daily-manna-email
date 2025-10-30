@@ -148,7 +148,22 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
 
     anchor = _find_day_anchor(content_root, label)
     if not anchor:
-        raise ValueError(f"Day label '{label}' not found on page: {url}")
+        # Fallback: return combined lesson HTML with a small notice
+        for sel in ["script", "style", "nav", "footer", "iframe"]:
+            for t in content_root.select(sel):
+                t.decompile = True
+                t.decompose()
+        notice = soup.new_tag("div")
+        notice.attrs["style"] = (
+            "padding:8px 12px;margin:8px 0;border-left:4px solid #f39c12;"
+            "background:#fff8e6;color:#8a6d3b;font-size:12px;"
+        )
+        notice.string = f"未找到指定日『{label}』的錨點；已回退為本課全部內容。"
+        wrapper = soup.new_tag("div")
+        wrapper.append(notice)
+        # Append the full content root
+        wrapper.append(content_root)
+        return str(wrapper)
 
     # Collect nodes after the day label until reaching the next label
     day_texts = list(DAY_LABELS.values())
