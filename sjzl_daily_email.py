@@ -525,6 +525,24 @@ def run_once() -> int:
             "background:#fff8e6;color:#8a6d3b;font-size:13px;}"
         )
         html_with_css = _wrap_email_html_with_css(html_day, CUSTOM_CSS)
+        # Append original link footer inside the email body
+        try:
+            vol, les, _d = EZOe_SELECTOR.split("-")
+            abs_url = f"{EZOe_BASE.rstrip('/')}/2264-{int(vol)}-{int(les)}.html"
+        except Exception:
+            abs_url = source_url
+        footer = (
+            "<hr><p style=\"margin-top:12px;\">原文連結："
+            f"<a href=\"{abs_url}\" target=\"_blank\" rel=\"noopener noreferrer\">{abs_url}</a>"
+            "</p>"
+        )
+        # Inject footer before closing .email-body div
+        try:
+            insertion_point = "</div></div></body></html>"
+            html_with_css = html_with_css.replace("</div></div></body></html>", footer + insertion_point)
+        except Exception:
+            # Fallback: append to end if structure changed
+            html_with_css = html_with_css + footer
         # Convert visible content to zh-TW (server side) for both HTML and text
         html_with_css = _maybe_convert_zh_cn_to_zh_tw(html_with_css)
         body = _maybe_convert_zh_cn_to_zh_tw(body)
