@@ -198,6 +198,23 @@ def _debug_preview(label: str, text: str) -> None:
         logger.info("DEBUG %s (error previewing): %s", label, _e)
 
 
+# -------- zh-CN -> zh-TW conversion (OpenCC) --------
+
+def _maybe_convert_zh_cn_to_zh_tw(text: str) -> str:
+    """Convert Simplified Chinese to Traditional Chinese (Taiwan) if OpenCC is available.
+
+    Falls back to the original text when OpenCC is not installed.
+    """
+    if not text:
+        return text
+    try:
+        from opencc import OpenCC  # type: ignore
+        cc = OpenCC('s2tw')  # Simplified Chinese to Traditional Chinese (Taiwan)
+        return cc.convert(text)
+    except Exception:
+        return text
+
+
 # -------- HTTP helpers --------
 
 def _decode_html(resp: requests.Response, url: str = "") -> Optional[str]:
@@ -508,6 +525,9 @@ def run_once() -> int:
             "background:#fff8e6;color:#8a6d3b;font-size:13px;}"
         )
         html_with_css = _wrap_email_html_with_css(html_day, CUSTOM_CSS)
+        # Convert visible content to zh-TW (server side) for both HTML and text
+        html_with_css = _maybe_convert_zh_cn_to_zh_tw(html_with_css)
+        body = _maybe_convert_zh_cn_to_zh_tw(body)
         send_email(subject, body, html_body=html_with_css)
         logger.info("HTML email (ezoe) sent to %s", os.environ.get("EMAIL_TO", ""))
         return 0
@@ -547,7 +567,11 @@ def run_once() -> int:
         {paras}
         </div></body></html>
         """
+    # Convert content to zh-TW prior to building/sending
+    title = _maybe_convert_zh_cn_to_zh_tw(title)
+    text_body = _maybe_convert_zh_cn_to_zh_tw(text_body)
     html_body = _to_html(title, lesson_url, today, text_body)
+    html_body = _maybe_convert_zh_cn_to_zh_tw(html_body)
     _debug_preview("SJZL_TEXT_BODY", text_body)
     _debug_preview("SJZL_HTML_BODY", html_body)
     subject = f"聖經之旅 | 第 {lesson_num if lesson_num!=-1 else '測試'} 課 | {today}"
