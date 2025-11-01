@@ -154,7 +154,8 @@ def _wrap_email_html_with_css(content_html: str, css_text: str) -> str:
         head.append("<style type=\"text/css\">" + css_text + "</style>")
     shell = (
         "<!doctype html>\n"
-        "<html><head>" + "".join(head) + "</head><body><div class='email-body'>" + content_html + "</div></body></html>"
+        "<html><head>" + "".join(head) + "</head>"
+        "<body><div class='email-page'><div class='email-body'>" + content_html + "</div></div></body></html>"
     )
     return shell
 
@@ -481,13 +482,32 @@ def run_once() -> int:
         body = f"來源: {source_url}\n日期: {today}\n\n{preview}"
         _debug_preview("EZOE_BODY", body)
         # Inline CSS from the original lesson page so Gmail renders without external links
-        try:
-            html_with_css = _wrap_email_html_with_css(
-                html_day,
-                _fetch_css_texts_from_page(fetch(source_url) or "", source_url),
-            )
-        except Exception:
-            html_with_css = _wrap_email_html_with_css(html_day, "")
+        # Use a fixed, Gmail-safe custom stylesheet (scoped under .email-body)
+        CUSTOM_CSS = (
+            ".email-page{background:#f5f6f8;padding:24px 12px;}"
+            ".email-body{margin:0 auto;max-width:720px;padding:20px 20px 28px;"
+            "background:#ffffff;color:#1a1a1a;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06);"
+            "font:16px/1.65 -apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,"
+            "\"Noto Sans CJK TC\",\"Noto Sans CJK SC\",\"PingFang TC\",\"PingFang SC\",\"Hiragino Sans GB\",\"Microsoft YaHei\",Arial,sans-serif;"
+            "-webkit-font-smoothing:antialiased;text-size-adjust:100%;}"
+            ".email-body h1{font-size:24px;line-height:1.25;margin:12px 0;}"
+            ".email-body h2{font-size:20px;line-height:1.3;margin:16px 0 10px;}"
+            ".email-body h3{font-size:18px;line-height:1.35;margin:14px 0 8px;}"
+            ".email-body h4,.email-body h5,.email-body h6{margin:12px 0 6px;line-height:1.4;}"
+            ".email-body p{margin:10px 0;}"
+            ".email-body ul,.email-body ol{margin:10px 0 10px 22px;padding:0;}"
+            ".email-body li{margin:6px 0;}"
+            ".email-body blockquote{margin:12px 0;padding:8px 12px;border-left:4px solid #e9e9e9;background:#fafafa;}"
+            ".email-body a{color:#0b63ce;text-decoration:underline;}"
+            ".email-body a:visited{color:#6b4dd6;}"
+            ".email-body hr{border:0;border-top:1px solid #ececec;margin:16px 0;}"
+            ".email-body img{max-width:100%;height:auto;border:0;}"
+            ".email-body table{border-collapse:collapse;max-width:100%;}"
+            ".email-body th,.email-body td{border:1px solid #e5e5e5;padding:6px 8px;}"
+            ".email-body .note,.email-body .notice{padding:8px 12px;margin:10px 0;border-left:4px solid #f39c12;"
+            "background:#fff8e6;color:#8a6d3b;font-size:13px;}"
+        )
+        html_with_css = _wrap_email_html_with_css(html_day, CUSTOM_CSS)
         send_email(subject, body, html_body=html_with_css)
         logger.info("HTML email (ezoe) sent to %s", os.environ.get("EMAIL_TO", ""))
         return 0
