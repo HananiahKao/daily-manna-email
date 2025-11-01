@@ -19,3 +19,26 @@ Agent Guidelines for This Repo
 
 - VCS hygiene:
   - Do not commit `.venv/`, `.env`, `.sjzl_env`, or other local-only artifacts. If needed, update `.gitignore` first.
+
+---
+
+Notes to future maintainers (lessons learned)
+
+- HTML decoding and mojibake
+  - When scraping ezoe.work (and similar sites), always decode response bytes as UTF-8. Browsers render their pages fine because the HTTP response context supplies charset; our local fetch must do the same.
+  - ezoe_week_scraper.py now forces UTF-8 for hosts ending with `ezoe.work` and otherwise uses a robust decode flow (requests’ encoding → meta charset sniff → UTF-8 fallback). Keep this logic if you touch fetching.
+  - When writing extracted HTML fragments to disk for file:// preview, wrap them in a minimal shell with `<meta charset="utf-8">`. Without this, browsers may guess a wrong encoding for local files even if the bytes are UTF‑8.
+
+- Day section detection on ezoe.work
+  - Day headers (周一..主日) are not plain text anchors. They appear under class `cn1` with predictable IDs: `1_6`..`1_12` correspond to 周一..主日.
+  - The scraper now prefers these IDs to anchor sections and falls back to normalized text matching (`周三` contained in element text). If site structure changes, revisit `DAY_ID_BY_INDEX` and `_find_day_anchor`.
+
+- Injected labels
+  - The `<h3>周X</h3>` heading in outputs is added by our scraper for clarity. It is not in the source HTML.
+
+- Debugging workflow
+  - If you see mojibake in the shell, verify via browser using `file://` after ensuring a `<meta charset="utf-8">` is present. If the browser still shows mojibake, the decoding persisted bad codepoints—fix the requests decoding.
+  - Use the existing robust decoder in both `sjzl_daily_email.py` and `ezoe_week_scraper.py` to keep behavior consistent.
+
+- Commit etiquette
+  - Before proposing commits, read `/Users/hananiah/Developer/Commit_Message_Rules.md` (external to repo). Follow its format and get approval before committing.
