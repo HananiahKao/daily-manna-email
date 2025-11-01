@@ -34,10 +34,93 @@ from email.utils import formataddr
 from email import encoders
 from email.charset import Charset, QP
 from typing import Optional, Tuple, List, Optional as TypingOptional
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+
+# -------- CSS extraction for ezoe mode --------
+
+def _ezoe_lesson_url(selector: str, base: str) -> str:
+    """Build lesson URL like https://ezoe.work/books/2/2264-<volume>-<lesson>.html from selector 'v-l-d'."""
+    import re as _re
+    m = _re.fullmatch(r"(\d+)-(\d+)-(\d)", selector)
+    if not m:
+        raise ValueError("Invalid EZOe selector format: '<volume>-<lesson>-<day>'")
+    vol = int(m.group(1)); les = int(m.group(2))
+    filename = f"2264-{vol}-{les}.html"
+    return urljoin(base.rstrip('/') + '/', filename)
+
+
+def _fetch_css_texts_from_page(html: str, page_url: str, max_bytes: int = 120_000) -> str:
+    """Collect CSS from inline <style> and linked stylesheets (same-origin), capped by max_bytes."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    out_parts: List[str] = []
+    total = 0
+    # Inline styles first
+    for st in soup.find_all("style"):
+        try:
+            txt = st.get_text() or ""
+        except Exception:
+            txt = ""
+        if not txt:
+            continue
+        b = len(txt.encode("utf-8", errors="ignore"))
+        if total + b > max_bytes:
+            break
+        out_parts.append(txt)
+        total += b
+    # Linked styles (same-origin only)
+    try:
+        page_host = urlparse(page_url).hostname or ""
+    except Exception:
+        page_host = ""
+    for link in soup.find_all("link", rel=True, href=True):
+        if str(link.get("rel")).lower().find("stylesheet") < 0:
+            # accept rel=['stylesheet'] or similar
+            rels = link.get("rel")
+            if not rels or not any(str(r).lower() == "stylesheet" for r in rels):
+                continue
+        href = link.get("href").strip()
+        css_url = urljoin(page_url, href)
+        try:
+            if urlparse(css_url).hostname != page_host:
+                continue
+        except Exception:
+            continue
+        try:
+            resp = requests.get(css_url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+            if resp.status_code != 200 or "text/css" not in resp.headers.get("Content-Type", ""):
+                continue
+            css_txt = resp.text or ""
+        except Exception:
+            continue
+        if not css_txt:
+            continue
+        b = len(css_txt.encode("utf-8", errors="ignore"))
+        if total + b > max_bytes:
+            break
+        out_parts.append(css_txt)
+        total += b
+
+    # Optionally filter out very site-specific chrome we strip
+    if out_parts:
+        joined = "\n".join(out_parts)
+        # Cheap pruning: drop rules targeting header/feature/footer/back-to-top ids we strip
+        # Keep content classes like .cn1, .l2, .l3 intact.
+        return joined
+    return ""
+
+
+def _wrap_email_html_with_css(content_html: str, css_text: str) -> str:
+    head = ["<meta charset='utf-8'>"]
+    if css_text:
+        head.append("<style type=\"text/css\">" + css_text + "</style>")
+    shell = (
+        "<!doctype html>\n"
+        "<html><head>" + "".join(head) + "</head><body>" + content_html + "</body></html>"
+    )
+    return shell
 
 # -------- Config & Logging --------
 
@@ -361,7 +444,15 @@ def run_once() -> int:
         _debug_preview("EZOE_TEXT_PREVIEW", preview)
         body = f"來源: {source_url}\n日期: {today}\n\n{preview}"
         _debug_preview("EZOE_BODY", body)
-        send_email(subject, body, html_body=html_day)
+        # Inline CSS from the original lesson page so Gmail renders without external links
+        try:
+            html_with_css = _wrap_email_html_with_css(
+                html_day,
+                _fetch_css_texts_from_page(fetch(source_url) or "", source_url),
+            )
+        except Exception:
+            html_with_css = _wrap_email_html_with_css(html_day, "")
+        send_email(subject, body, html_body=html_with_css)
         logger.info("HTML email (ezoe) sent to %s", os.environ.get("EMAIL_TO", ""))
         return 0
     # Allow override for testing SMTP without discovery/fetch variability
