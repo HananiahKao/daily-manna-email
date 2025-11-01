@@ -46,11 +46,37 @@ DAY_LABELS = {
     7: "主日",
 }
 
+# Observed pattern on ezoe.work lesson pages: per-lesson day headers appear as
+# elements with class 'cn1' and IDs like '1_6'..'1_12' corresponding roughly to
+# 周一..主日 in order. Provide a best-effort mapping to prefer structural IDs
+# when available.
+DAY_ID_BY_INDEX = {
+    1: "1_6",  # 周一
+    2: "1_7",  # 周二
+    3: "1_8",  # 周三
+    4: "1_9",  # 周四
+    5: "1_10", # 周五
+    6: "1_11", # 周六
+    7: "1_12", # 主日
+}
 
-def _decode_html(resp: requests.Response) -> Optional[str]:
+
+def _decode_html(resp: requests.Response, url: str = "") -> Optional[str]:
     if resp.status_code != 200 or "text/html" not in resp.headers.get("Content-Type", ""):
         return None
     data = resp.content or b""
+    # Prefer robust UTF-8 handling for known host(s)
+    try:
+        from urllib.parse import urlparse as _urlparse
+        host = _urlparse(url).hostname or ""
+    except Exception:
+        host = ""
+    if host.endswith("ezoe.work"):
+        try:
+            return data.decode("utf-8", errors="replace")
+        except Exception:
+            pass
+
     enc = resp.encoding
     if not enc:
         try:
@@ -72,7 +98,7 @@ def _decode_html(resp: requests.Response) -> Optional[str]:
 def _fetch(url: str) -> Optional[str]:
     try:
         resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-        return _decode_html(resp)
+        return _decode_html(resp, url)
     except requests.RequestException:
         return None
 
@@ -100,10 +126,27 @@ def _collect_until_next_day(start_node: Tag, day_texts: List[str]) -> List[Tag]:
     return collected
 
 
+def _norm_text(s: str) -> str:
+    # Normalize whitespace and common full-width spaces
+    return re.sub(r"\s+", "", s.replace("\u3000", " ")).strip()
+
+
 def _find_day_anchor(container: Tag, label: str) -> Optional[Tag]:
-    # Find a tag whose stripped text exactly matches the day label
+    # Robust day anchor detection:
+    # 1) exact match on normalized text
+    # 2) contains match on normalized text (to allow surrounding punctuation)
+    # 3) structural hints: '.cn1' blocks whose text contains the label
+    target = _norm_text(label)
     for el in container.find_all(True):
-        if el.get_text(strip=True) == label:
+        txt = _norm_text(el.get_text())
+        if not txt:
+            continue
+        if txt == target or target in txt:
+            return el
+    # try structural hint: class 'cn1' often denotes day headers
+    for el in container.select('.cn1, [id^="1_"]'):
+        txt = _norm_text(el.get_text())
+        if target in txt:
             return el
     return None
 
@@ -146,7 +189,13 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
     if not label:
         raise ValueError("Unsupported day label")
 
-    anchor = _find_day_anchor(content_root, label)
+    # Prefer structural id mapping when present
+    anchor = None
+    day_id = DAY_ID_BY_INDEX.get(day)
+    if day_id:
+        anchor = content_root.find(id=day_id)
+    if not anchor:
+        anchor = _find_day_anchor(content_root, label)
     if not anchor:
         # Fallback: return combined lesson HTML with a small notice
         for sel in ["script", "style", "nav", "footer", "iframe"]:
@@ -166,7 +215,7 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
         return str(wrapper)
 
     # Collect nodes after the day label until reaching the next label
-    day_texts = list(DAY_LABELS.values())
+    day_texts = [_norm_text(v) for v in DAY_LABELS.values()]
     nodes = _collect_until_next_day(anchor, day_texts)
     # Also include the immediate subtitle (often the next element following the label in a separate container)
     # If the first collected node is extremely short and there is another sibling text, keep as-is; we return raw HTML
@@ -176,21 +225,59 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
     header = soup.new_tag("h3")
     header.string = label
     wrapper.append(header)
+    # remove chrome from cloned nodes where possible
     for n in nodes:
+        if isinstance(n, Tag):
+            for sel in ["script", "style", "nav", "footer", "iframe", ".header", ".feature", "#btt", "#toptitle"]:
+                for t in n.select(sel):
+                    try:
+                        t.decompose()
+                    except Exception:
+                        pass
         wrapper.append(n)
 
     return str(wrapper)
 
 
 if __name__ == "__main__":
-    import argparse, json, sys
+    import argparse, os, sys
     ap = argparse.ArgumentParser(description="Fetch a day's HTML from ezoe.work lesson page")
     ap.add_argument("selector", help="<volume>-<lesson>-<day>, day 0 returns full lesson HTML")
     ap.add_argument("--base", default="https://ezoe.work/books/2", help="Base URL for books path")
+    ap.add_argument(
+        "--out",
+        help="Write HTML to tmp/decoded/[name].html (default name is selector)",
+    )
     args = ap.parse_args()
     try:
         html = get_day_html(args.selector, base=args.base)
-        sys.stdout.write(html)
     except Exception as e:
         sys.stderr.write(f"Error: {e}\n")
         sys.exit(1)
+
+    # If --out is provided, write to tmp/decoded path using UTF-8
+    if args.out is not None:
+        out_name = args.out.strip() or args.selector
+        # sanitize filename minimally
+        safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "-" for ch in out_name)
+        out_dir = os.path.join(os.getcwd(), "tmp", "decoded")
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, f"{safe}.html")
+        # Ensure browsers can render local file via file:// with correct charset by wrapping
+        # in a minimal HTML shell including a UTF-8 meta tag when missing.
+        html_to_write = html
+        try:
+            low = html.strip().lower()
+            if "<html" not in low or "<meta" not in low or "charset" not in low:
+                html_to_write = (
+                    "<!doctype html>\n"
+                    "<html><head><meta charset=\"utf-8\"></head><body>" + html + "</body></html>"
+                )
+        except Exception:
+            html_to_write = html
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(html_to_write)
+        sys.stdout.write(out_path + "\n")
+    else:
+        # default: print to stdout
+        sys.stdout.write(html)
