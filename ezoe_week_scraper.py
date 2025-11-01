@@ -227,6 +227,26 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
         wrapper.append(content_root)
         return str(wrapper)
 
+    # Determine section title from the day header block if available
+    section_title = ""
+    try:
+        if anchor and anchor.get("class") and "cn1" in anchor.get("class", []):
+            # Typical structure: <div class="cn1" id="1_8"><div>周三</div> <div>標題</div></div>
+            # Gather immediate child divs and use the second one's text as title.
+            child_divs = [c for c in anchor.find_all(recursive=False) if isinstance(c, Tag)]
+            if len(child_divs) >= 2:
+                t = child_divs[1].get_text(strip=True)
+                if t:
+                    section_title = t
+            if not section_title:
+                # Fallback: extract text excluding the day label
+                full = _norm_text(anchor.get_text())
+                lab = _norm_text(label)
+                if full.startswith(lab):
+                    section_title = full[len(lab):]
+    except Exception:
+        section_title = ""
+
     # Collect nodes after the day label until reaching the next label.
     # Prefer explicit structural next anchor when IDs are available.
     day_texts = [_norm_text(v) for v in DAY_LABELS.values()]
@@ -241,7 +261,7 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
     # Build a minimal wrapper to keep HTML valid and portable
     wrapper = soup.new_tag("div")
     header = soup.new_tag("h3")
-    header.string = label
+    header.string = f"{label}  {section_title}" if section_title else label
     wrapper.append(header)
     # remove chrome from cloned nodes where possible
     for n in nodes:
