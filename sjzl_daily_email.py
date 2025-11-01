@@ -526,9 +526,17 @@ def run_once() -> int:
         )
         html_with_css = _wrap_email_html_with_css(html_day, CUSTOM_CSS)
         # Append original link footer inside the email body
+        # Build canonical ezoe.work URL, anchored to correct day section when possible.
         try:
-            vol, les, _d = EZOe_SELECTOR.split("-")
-            abs_url = f"{EZOe_BASE.rstrip('/')}/2264-{int(vol)}-{int(les)}.html"
+            vol, les, day = EZOe_SELECTOR.split("-")
+            base_url = f"{EZOe_BASE.rstrip('/')}/2264-{int(vol)}-{int(les)}.html"
+            # ezoe day anchors: 周一..主日 map to ids 1_6..1_12
+            try:
+                d = int(day)
+                anchor_id = f"1_{5 + d}" if 1 <= d <= 7 else None
+            except Exception:
+                anchor_id = None
+            abs_url = base_url + (f"#{anchor_id}" if anchor_id else "")
         except Exception:
             abs_url = source_url
         footer = (
