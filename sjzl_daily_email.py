@@ -52,8 +52,11 @@ def _ezoe_lesson_url(selector: str, base: str) -> str:
     return urljoin(base.rstrip('/') + '/', filename)
 
 
-def _fetch_css_texts_from_page(html: str, page_url: str, max_bytes: int = 120_000) -> str:
-    """Collect CSS from inline <style> and linked stylesheets (same-origin), capped by max_bytes."""
+def _fetch_css_texts_from_page(html: str, page_url: str, max_bytes: int = None) -> str:
+    """Collect CSS from inline <style> and linked stylesheets (same-origin).
+
+    For testing, `max_bytes` may be None to disable capping.
+    """
     soup = BeautifulSoup(html or "", "html.parser")
     out_parts: List[str] = []
     total = 0
@@ -66,7 +69,7 @@ def _fetch_css_texts_from_page(html: str, page_url: str, max_bytes: int = 120_00
         if not txt:
             continue
         b = len(txt.encode("utf-8", errors="ignore"))
-        if total + b > max_bytes:
+        if max_bytes is not None and total + b > max_bytes:
             break
         out_parts.append(txt)
         total += b
@@ -98,7 +101,7 @@ def _fetch_css_texts_from_page(html: str, page_url: str, max_bytes: int = 120_00
         if not css_txt:
             continue
         b = len(css_txt.encode("utf-8", errors="ignore"))
-        if total + b > max_bytes:
+        if max_bytes is not None and total + b > max_bytes:
             break
         out_parts.append(css_txt)
         total += b
@@ -106,9 +109,42 @@ def _fetch_css_texts_from_page(html: str, page_url: str, max_bytes: int = 120_00
     # Optionally filter out very site-specific chrome we strip
     if out_parts:
         joined = "\n".join(out_parts)
-        # Cheap pruning: drop rules targeting header/feature/footer/back-to-top ids we strip
-        # Keep content classes like .cn1, .l2, .l3 intact.
-        return joined
+        # Simple filters/scoping: remove obvious chrome we strip from content,
+        # and wrap CSS under a scoping class to avoid collisions.
+        scope = ".email-body"
+        pruned = []
+        for line in joined.splitlines():
+            low = line.strip().lower()
+            # drop rules that directly target header/feature/back-to-top or body reset we don't need
+            if any(tok in low for tok in [".header", ".feature", "#btt", "#toptitle", "iframe", "nav", "footer"]):
+                continue
+            pruned.append(line)
+        css_core = "\n".join(pruned)
+        # Naive scoping: prefix top-level selectors by adding `.email-body ` before rules.
+        # Keep it simple to avoid breaking @ rules.
+        scoped_lines = []
+        for ln in css_core.splitlines():
+            s = ln.rstrip()
+            if not s:
+                scoped_lines.append(s)
+                continue
+            if s.lstrip().startswith("@"):
+                # keep @media/@font-face as-is
+                scoped_lines.append(s)
+            elif "{" in s:
+                try:
+                    before, after = s.split("{", 1)
+                    selectors = before.strip()
+                    if selectors:
+                        scoped_sel = ",".join(f"{scope} " + sel.strip() for sel in selectors.split(","))
+                        scoped_lines.append(scoped_sel + "{" + after)
+                    else:
+                        scoped_lines.append(s)
+                except ValueError:
+                    scoped_lines.append(s)
+            else:
+                scoped_lines.append(s)
+        return "\n".join(scoped_lines)
     return ""
 
 
@@ -118,7 +154,7 @@ def _wrap_email_html_with_css(content_html: str, css_text: str) -> str:
         head.append("<style type=\"text/css\">" + css_text + "</style>")
     shell = (
         "<!doctype html>\n"
-        "<html><head>" + "".join(head) + "</head><body>" + content_html + "</body></html>"
+        "<html><head>" + "".join(head) + "</head><body><div class='email-body'>" + content_html + "</div></body></html>"
     )
     return shell
 
