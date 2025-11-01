@@ -110,16 +110,29 @@ def _lesson_url(base: str, volume: int, lesson: int) -> str:
     return urljoin(base.rstrip("/") + "/", filename)
 
 
-def _collect_until_next_day(start_node: Tag, day_texts: List[str]) -> List[Tag]:
-    # Simple and robust approach: iterate forward siblings until we reach a next-day label
+def _collect_until_next_day(start_node: Tag, day_texts: List[str], next_anchor: Optional[Tag] = None) -> List[Tag]:
+    """Collect sibling nodes after start_node until next day boundary.
+
+    If next_anchor is provided, stop when we reach it (by identity or containment).
+    Otherwise, stop when a sibling's normalized text matches any known day label.
+    """
     collected: List[Tag] = []
     node = start_node.next_sibling
     while node is not None:
+        # Stop if we reached explicit next anchor
+        if next_anchor is not None:
+            # If the node is the anchor or contains it, stop
+            try:
+                if node is next_anchor or (getattr(node, 'find', None) and node.find(id=next_anchor.get('id'))):
+                    break
+            except Exception:
+                pass
+        # Skip pure strings between elements
         if isinstance(node, NavigableString):
             node = node.next_sibling
             continue
-        text = node.get_text(strip=True)
-        if text in day_texts:
+        txt = _norm_text(node.get_text())
+        if next_anchor is None and txt in day_texts:
             break
         collected.append(node)
         node = node.next_sibling
@@ -214,9 +227,14 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
         wrapper.append(content_root)
         return str(wrapper)
 
-    # Collect nodes after the day label until reaching the next label
+    # Collect nodes after the day label until reaching the next label.
+    # Prefer explicit structural next anchor when IDs are available.
     day_texts = [_norm_text(v) for v in DAY_LABELS.values()]
-    nodes = _collect_until_next_day(anchor, day_texts)
+    next_anchor = None
+    next_id = DAY_ID_BY_INDEX.get(day + 1)
+    if next_id:
+        next_anchor = content_root.find(id=next_id)
+    nodes = _collect_until_next_day(anchor, day_texts, next_anchor=next_anchor)
     # Also include the immediate subtitle (often the next element following the label in a separate container)
     # If the first collected node is extremely short and there is another sibling text, keep as-is; we return raw HTML
 
