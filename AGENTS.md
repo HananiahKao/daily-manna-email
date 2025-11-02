@@ -42,3 +42,29 @@ Notes to future maintainers (lessons learned)
 
 - Commit etiquette
   - Before proposing commits, read `/Users/hananiah/Developer/Commit_Message_Rules.md` (external to repo). Follow its format and get approval before committing.
+
+## Worktrees
+
+- Overview
+  - Use `git worktree` to run parallel Codex sessions without interfering with each other.
+  - Each worktree has its own local-only files (`.env`, `.sjzl_env`, `.venv/`) which stay untracked.
+
+- Helper scripts
+  - `scripts/init-worktree.sh <worktree-path>`
+    - Copies root-level `.env` and `.sjzl_env` into the target worktree if present.
+    - Mirrors an existing root `.venv` (may be large) or creates a fresh venv.
+    - Ensures `.env`, `.sjzl_env`, `.venv/` are ignored via the worktree’s `info/exclude`.
+  - `scripts/create-worktree.sh <worktree-path> <branch> [--from <start-point>] [--detach]`
+    - Creates the branch if missing (unless `--detach`).
+    - Adds the worktree and then calls `scripts/init-worktree.sh`.
+
+- Examples
+  - Create a fixes branch worktree: `scripts/create-worktree.sh worktrees/fixes fixes --from main`
+  - Create for existing local branch: `scripts/create-worktree.sh worktrees/feat-x feat/x`
+  - Detached at HEAD: `scripts/create-worktree.sh worktrees/exp1 exp1 --detach`
+  - Detached from a commit: `scripts/create-worktree.sh worktrees/try-xyz try/xyz --from abc123 --detach`
+
+- Tips
+  - List worktrees: `git worktree list`
+  - Remove a worktree: `git worktree remove worktrees/<name>` (not from inside it)
+  - Keep `.venv/`, `.env`, `.sjzl_env` untracked; avoid blanket `git add -A`.
