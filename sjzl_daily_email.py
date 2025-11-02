@@ -52,6 +52,18 @@ def _ezoe_lesson_url(selector: str, base: str) -> str:
     return urljoin(base.rstrip('/') + '/', filename)
 
 
+def _ezoe_day_anchor(selector: str) -> Optional[str]:
+    """Return day anchor id like '1_6'..'1_12' from selector 'v-l-d'."""
+    try:
+        _v, _l, d = selector.split("-")
+        di = int(d)
+        if 1 <= di <= 7:
+            return f"1_{5 + di}"
+    except Exception:
+        return None
+    return None
+
+
 def _fetch_css_texts_from_page(html: str, page_url: str, max_bytes: int = None) -> str:
     """Collect CSS from inline <style> and linked stylesheets (same-origin).
 
@@ -528,14 +540,8 @@ def run_once() -> int:
         # Append original link footer inside the email body
         # Build canonical ezoe.work URL, anchored to correct day section when possible.
         try:
-            vol, les, day = EZOe_SELECTOR.split("-")
-            base_url = f"{EZOe_BASE.rstrip('/')}/2264-{int(vol)}-{int(les)}.html"
-            # ezoe day anchors: 周一..主日 map to ids 1_6..1_12
-            try:
-                d = int(day)
-                anchor_id = f"1_{5 + d}" if 1 <= d <= 7 else None
-            except Exception:
-                anchor_id = None
+            base_url = _ezoe_lesson_url(EZOe_SELECTOR, EZOe_BASE)
+            anchor_id = _ezoe_day_anchor(EZOe_SELECTOR)
             abs_url = base_url + (f"#{anchor_id}" if anchor_id else "")
         except Exception:
             abs_url = source_url
@@ -544,13 +550,14 @@ def run_once() -> int:
             f"<a href=\"{abs_url}\" target=\"_blank\" rel=\"noopener noreferrer\">{abs_url}</a>"
             "</p>"
         )
-        # Inject footer before closing .email-body div
+        # Inject footer before closing .email-body div and log for verification
         try:
             insertion_point = "</div></div></body></html>"
             html_with_css = html_with_css.replace("</div></div></body></html>", footer + insertion_point)
         except Exception:
             # Fallback: append to end if structure changed
             html_with_css = html_with_css + footer
+        logger.info("Original link (anchored): %s", abs_url)
         # Convert visible content to zh-TW (server side) for both HTML and text
         html_with_css = _maybe_convert_zh_cn_to_zh_tw(html_with_css)
         body = _maybe_convert_zh_cn_to_zh_tw(body)
