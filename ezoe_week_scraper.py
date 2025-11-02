@@ -34,6 +34,11 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 
 HEADERS = {"User-Agent": "daily-manna-ezoe/1.0 (+non-commercial)"}
 REQUEST_TIMEOUT = (10, 20)
+try:
+    import os as _os
+    POLITE_DELAY_MS = int(_os.getenv("POLITE_DELAY_MS", "500"))
+except Exception:
+    POLITE_DELAY_MS = 500
 
 
 DAY_LABELS = {
@@ -101,6 +106,14 @@ def _fetch(url: str) -> Optional[str]:
         return _decode_html(resp, url)
     except requests.RequestException:
         return None
+    finally:
+        # Polite pacing between requests
+        try:
+            if POLITE_DELAY_MS and POLITE_DELAY_MS > 0:
+                import time as _time
+                _time.sleep(POLITE_DELAY_MS / 1000.0)
+        except Exception:
+            pass
 
 
 def _lesson_url(base: str, volume: int, lesson: int) -> str:
