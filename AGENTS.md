@@ -8,6 +8,7 @@ Agent Guidelines for This Repo
   - Ask for approval before committing.
   - Do not push unless explicitly requested.
   - Always stage files explicitly (no blanket `git add -A`). Use `git add <path>` for only the intended files to avoid committing local envs/venv. Prefer `git status` to verify before committing.
+  - Always provide the proposed commit message for review before committing.
 
 - Coding style:
   - Keep changes minimal and focused on the task.
@@ -19,6 +20,12 @@ Agent Guidelines for This Repo
 
 - VCS hygiene:
   - Do not commit `.venv/`, `.env`, `.sjzl_env`, or other local-only artifacts. If needed, update `.gitignore` first.
+
+## Environment loading
+
+- When running scripts locally (including `scripts/run_daily_stateful_ezoe.sh` and direct Python entrypoints), always source environment variables from `.env` before execution so email sending works during tests.
+- The stateful runner already sources `.env` automatically. For direct runs, prefer either exporting vars in the shell or using: `set -a; . ./.env; set +a` prior to invoking Python.
+- Required for sending emails: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_TO` (plus optional `SMTP_PORT`, `EMAIL_FROM`, `TLS_MODE`).
 
 ---
 

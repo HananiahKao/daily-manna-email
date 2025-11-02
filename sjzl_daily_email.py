@@ -469,9 +469,27 @@ def run_once() -> int:
         try:
             html_day = get_day_html(EZOe_SELECTOR, base=EZOe_BASE)
         except Exception as e:
-            logger.error("Failed to fetch ezoe day HTML for selector %s: %s", EZOe_SELECTOR, e)
+            # Fail the run so stateful script can advance selector; surface suggestion.
+            msg = str(e)
+            logger.error("Ezoe selector failed for %s: %s", EZOe_SELECTOR, msg)
+            if "Try:" in msg or "Try selector:" in msg:
+                logger.error("Suggested next selector: %s", msg)
             return 2
         _debug_preview("EZOE_HTML", html_day)
+
+        # When debugging, persist the raw day HTML to inspect content before wrapping/conversion.
+        if _debug_enabled():
+            try:
+                import pathlib, re as _re
+                out_dir = pathlib.Path("state")
+                out_dir.mkdir(parents=True, exist_ok=True)
+                raw_path = out_dir / "last_ezoe_day_raw.html"
+                raw_path.write_text(html_day or "", encoding="utf-8")
+                # quick sanity markers
+                has_c = "id=\"c\"" in (html_day or "") or "id='c'" in (html_day or "")
+                logger.info("DEBUG EZOE_HTML length=%s has_div_c=%s", len(html_day or ""), has_c)
+            except Exception as _e:
+                logger.info("DEBUG failed to write raw ezOE day html: %s", _e)
 
         # Build subject and plain-text fallback derived from same HTML; also provide source URL hint
         # Derive source URL based on selector
@@ -558,6 +576,19 @@ def run_once() -> int:
             # Fallback: append to end if structure changed
             html_with_css = html_with_css + footer
         logger.info("Original link (anchored): %s", abs_url)
+        # Persist the final wrapped HTML when debugging for comparison
+        if _debug_enabled():
+            try:
+                import pathlib
+                out_dir = pathlib.Path("state")
+                out_dir.mkdir(parents=True, exist_ok=True)
+                final_path = out_dir / "last_ezoe_email_wrapped.html"
+                final_path.write_text(html_with_css or "", encoding="utf-8")
+                # ensure conversion/sanitization didn't strip core container
+                has_c2 = ("id=\"c\"" in (html_with_css or "")) or ("id='c'" in (html_with_css or ""))
+                logger.info("DEBUG EZOE_HTML_WRAPPED length=%s has_div_c=%s", len(html_with_css or ""), has_c2)
+            except Exception as _e:
+                logger.info("DEBUG failed to write wrapped ezOE email html: %s", _e)
         # Convert visible content to zh-TW (server side) for both HTML and text
         html_with_css = _maybe_convert_zh_cn_to_zh_tw(html_with_css)
         body = _maybe_convert_zh_cn_to_zh_tw(body)
