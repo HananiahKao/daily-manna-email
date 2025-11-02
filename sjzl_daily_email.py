@@ -64,6 +64,41 @@ def _ezoe_day_anchor(selector: str) -> Optional[str]:
     return None
 
 
+def _ezoe_detect_anchor_id(selector: str, base: str) -> Optional[str]:
+    """Best-effort detect the actual day anchor id from the live lesson page.
+
+    Uses ezoe_week_scraper's parsing heuristics to locate the day header and
+    returns its element id when present. Falls back to None if not found.
+    """
+    try:
+        # Lazy import to avoid hard dependency when selector mode is unused
+        import ezoe_week_scraper as ez  # type: ignore
+        from bs4 import BeautifulSoup as _BS  # local parser
+
+        m = re.fullmatch(r"(\d+)-(\d+)-(\d)", selector)
+        if not m:
+            return None
+        volume = int(m.group(1)); lesson = int(m.group(2)); day = int(m.group(3))
+        if not (1 <= day <= 7):
+            return None
+        label = ez.DAY_LABELS.get(day)
+        if not label:
+            return None
+        url = ez._lesson_url(base, volume, lesson)  # reuse helper for canonical path
+        html = ez._fetch(url)
+        if not html:
+            return None
+        soup = _BS(html, "html.parser")
+        content_root = soup.select_one("div.main") or soup.find("body") or soup
+        anchor = ez._find_day_anchor(content_root, label)
+        if anchor and anchor.get("id"):
+            return str(anchor.get("id")).strip() or None
+    except Exception:
+        # Any failure here should not break the job; we will fallback later
+        return None
+    return None
+
+
 def _fetch_css_texts_from_page(html: str, page_url: str, max_bytes: int = None) -> str:
     """Collect CSS from inline <style> and linked stylesheets (same-origin).
 
@@ -559,7 +594,8 @@ def run_once() -> int:
         # Build canonical ezoe.work URL, anchored to correct day section when possible.
         try:
             base_url = _ezoe_lesson_url(EZOe_SELECTOR, EZOe_BASE)
-            anchor_id = _ezoe_day_anchor(EZOe_SELECTOR)
+            # Prefer detecting the actual anchor id from the live page, fallback to static mapping
+            anchor_id = _ezoe_detect_anchor_id(EZOe_SELECTOR, EZOe_BASE) or _ezoe_day_anchor(EZOe_SELECTOR)
             abs_url = base_url + (f"#{anchor_id}" if anchor_id else "")
         except Exception:
             abs_url = source_url
