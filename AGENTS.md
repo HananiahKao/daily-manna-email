@@ -20,6 +20,12 @@ Agent Guidelines for This Repo
 - VCS hygiene:
   - Do not commit `.venv/`, `.env`, `.sjzl_env`, or other local-only artifacts. If needed, update `.gitignore` first.
 
+## Environment loading
+
+- When running scripts locally (including `scripts/run_daily_stateful_ezoe.sh` and direct Python entrypoints), always source environment variables from `.env` before execution so email sending works during tests.
+- The stateful runner already sources `.env` automatically. For direct runs, prefer either exporting vars in the shell or using: `set -a; . ./.env; set +a` prior to invoking Python.
+- Required for sending emails: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_TO` (plus optional `SMTP_PORT`, `EMAIL_FROM`, `TLS_MODE`).
+
 ---
 
 Notes to future maintainers (lessons learned)

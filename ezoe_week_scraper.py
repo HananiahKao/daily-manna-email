@@ -145,23 +145,40 @@ def _norm_text(s: str) -> str:
 
 
 def _find_day_anchor(container: Tag, label: str) -> Optional[Tag]:
-    # Robust day anchor detection:
-    # 1) exact match on normalized text
-    # 2) contains match on normalized text (to allow surrounding punctuation)
-    # 3) structural hints: '.cn1' blocks whose text contains the label
+    # Prefer day rows within the main content: '.cn1' blocks under content container
     target = _norm_text(label)
+    # Strong preference: cn1 blocks inside container
+    for el in container.select('.cn1'):
+        txt = _norm_text(el.get_text())
+        if not txt:
+            continue
+        if target in txt or txt == target:
+            return el
+    # Secondary: any element in container where normalized text contains the label
     for el in container.find_all(True):
         txt = _norm_text(el.get_text())
         if not txt:
             continue
-        if txt == target or target in txt:
+        if target in txt or txt == target:
             return el
-    # try structural hint: class 'cn1' often denotes day headers
-    for el in container.select('.cn1, [id^="1_"]'):
+    # Tertiary: structural hint by id pattern when present
+    for el in container.select('[id^="1_"]'):
         txt = _norm_text(el.get_text())
+        if not txt:
+            continue
         if target in txt:
             return el
     return None
+
+
+def _suggest_next_selector(volume: int, lesson: int, day: int) -> str:
+    """Suggest the next logical selector given current triplet.
+
+    Assumes days progress 1..7 then roll to next lesson with day=1.
+    """
+    if day < 7:
+        return f"{volume}-{lesson}-{day + 1}"
+    return f"{volume}-{lesson + 1}-1"
 
 
 def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
@@ -177,18 +194,21 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
     lesson = int(m.group(2))
     day = int(m.group(3))
     if day < 0 or day > 7:
-        raise ValueError("Day must be 0..7")
+        suggestion = _suggest_next_selector(volume, lesson, max(1, min(day, 7)))
+        raise ValueError(f"Day out of range (0..7). Try selector: {suggestion}")
 
     url = _lesson_url(base, volume, lesson)
     html = _fetch(url)
     if not html:
-        raise ValueError(f"Failed to fetch lesson page: {url}")
+        # Treat as out-of-range lesson/volume. Provide suggestion to advance.
+        suggestion = _suggest_next_selector(volume, lesson, max(1, day))
+        raise ValueError(f"Lesson or volume not found for {selector}. Try: {suggestion}")
 
     soup = BeautifulSoup(html, "html.parser")
 
-    # Heuristically identify the main content container: it's the middle generic block between banners
-    # Fall back to body if not obvious
-    content_root = soup.find("body") or soup
+    # Heuristically identify the main content container: prefer primary lesson area
+    # Typical structure uses <div class='main'> for lesson content.
+    content_root = soup.select_one("div.main") or soup.find("body") or soup
 
     if day == 0:
         # Return the inner HTML of the detected content root (excluding scripts/styles)
@@ -202,30 +222,17 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
     if not label:
         raise ValueError("Unsupported day label")
 
-    # Prefer structural id mapping when present
-    anchor = None
-    day_id = DAY_ID_BY_INDEX.get(day)
-    if day_id:
-        anchor = content_root.find(id=day_id)
+    # Prefer robust text-based detection first; IDs vary per lesson
+    anchor = _find_day_anchor(content_root, label)
+    # Fallback to structural id mapping only if text-based detection failed
     if not anchor:
-        anchor = _find_day_anchor(content_root, label)
+        day_id = DAY_ID_BY_INDEX.get(day)
+        if day_id:
+            anchor = content_root.find(id=day_id)
     if not anchor:
-        # Fallback: return combined lesson HTML with a small notice
-        for sel in ["script", "style", "nav", "footer", "iframe"]:
-            for t in content_root.select(sel):
-                t.decompile = True
-                t.decompose()
-        notice = soup.new_tag("div")
-        notice.attrs["style"] = (
-            "padding:8px 12px;margin:8px 0;border-left:4px solid #f39c12;"
-            "background:#fff8e6;color:#8a6d3b;font-size:12px;"
-        )
-        notice.string = f"未找到指定日『{label}』的錨點；已回退為本課全部內容。"
-        wrapper = soup.new_tag("div")
-        wrapper.append(notice)
-        # Append the full content root
-        wrapper.append(content_root)
-        return str(wrapper)
+        # Treat missing anchor as out-of-range day for this lesson.
+        suggestion = _suggest_next_selector(volume, lesson, day)
+        raise ValueError(f"Day anchor not found for {selector}. Try: {suggestion}")
 
     # Determine section title from the day header block if available
     section_title = ""
@@ -251,9 +258,17 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
     # Prefer explicit structural next anchor when IDs are available.
     day_texts = [_norm_text(v) for v in DAY_LABELS.values()]
     next_anchor = None
-    next_id = DAY_ID_BY_INDEX.get(day + 1)
-    if next_id:
-        next_anchor = content_root.find(id=next_id)
+    # Try to determine the next day boundary via text-based detection; if not found, fallback to id mapping
+    try:
+        next_label = DAY_LABELS.get(day + 1)
+        if next_label:
+            next_anchor = _find_day_anchor(content_root, next_label)
+    except Exception:
+        next_anchor = None
+    if next_anchor is None:
+        next_id = DAY_ID_BY_INDEX.get(day + 1)
+        if next_id:
+            next_anchor = content_root.find(id=next_id)
     nodes = _collect_until_next_day(anchor, day_texts, next_anchor=next_anchor)
     # Also include the immediate subtitle (often the next element following the label in a separate container)
     # If the first collected node is extremely short and there is another sibling text, keep as-is; we return raw HTML

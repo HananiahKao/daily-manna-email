@@ -469,7 +469,11 @@ def run_once() -> int:
         try:
             html_day = get_day_html(EZOe_SELECTOR, base=EZOe_BASE)
         except Exception as e:
-            logger.error("Failed to fetch ezoe day HTML for selector %s: %s", EZOe_SELECTOR, e)
+            # Fail the run so stateful script can advance selector; surface suggestion.
+            msg = str(e)
+            logger.error("Ezoe selector failed for %s: %s", EZOe_SELECTOR, msg)
+            if "Try:" in msg or "Try selector:" in msg:
+                logger.error("Suggested next selector: %s", msg)
             return 2
         _debug_preview("EZOE_HTML", html_day)
 
