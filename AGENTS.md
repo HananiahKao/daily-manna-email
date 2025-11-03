@@ -18,15 +18,19 @@ Agent Guidelines for This Repo
 
 - Environment:
   - Support configuration via environment variables where applicable.
+  - Schedule-driven sends live in `state/ezoe_schedule.json` (override with `SCHEDULE_FILE`).
+  - `EZOE_VOLUME`, `EZOE_LESSON`, `EZOE_DAY_START` define the initial seed when creating a schedule.
+  - Daily overrides: `EZOE_SEND_WEEKDAY` / `EZOE_SEND_DATE` (parsed in Taiwan time). `RUN_FORCE=1` permits resends.
+  - Admin summary email settings: `ADMIN_SUMMARY_TO` (required to email), optional `ADMIN_SUMMARY_FROM`, `ADMIN_SUMMARY_SUBJECT_PREFIX`.
 
 - VCS hygiene:
   - Do not commit `.venv/`, `.env`, `.sjzl_env`, or other local-only artifacts. If needed, update `.gitignore` first.
 
 ## Environment loading
 
-- When running scripts locally (including `scripts/run_daily_stateful_ezoe.sh` and direct Python entrypoints), always source environment variables from `.env` before execution so email sending works during tests.
+- When running scripts locally (including `scripts/run_daily_stateful_ezoe.sh`, `scripts/run_weekly_schedule_summary.sh`, and direct Python entrypoints), always source environment variables from `.env` before execution so email sending works during tests.
 - The stateful runner already sources `.env` automatically. For direct runs, prefer either exporting vars in the shell or using: `set -a; . ./.env; set +a` prior to invoking Python.
-- Required for sending emails: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_TO` (plus optional `SMTP_PORT`, `EMAIL_FROM`, `TLS_MODE`).
+- Required for sending emails: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_TO` (plus optional `SMTP_PORT`, `EMAIL_FROM`, `TLS_MODE`). Summary emails reuse this transport but target `ADMIN_SUMMARY_TO` recipients.
 
 ---
 
@@ -47,6 +51,7 @@ Notes to future maintainers (lessons learned)
 - Debugging workflow
   - If you see mojibake in the shell, verify via browser using `file://` after ensuring a `<meta charset="utf-8">` is present. If the browser still shows mojibake, the decoding persisted bad codepoints—fix the requests decoding.
   - Use the existing robust decoder in both `sjzl_daily_email.py` and `ezoe_week_scraper.py` to keep behavior consistent.
+  - Schedule tooling: `schedule_tasks.py next-entry` (daily) and `schedule_tasks.py ensure-week --email` (Sunday) are the primary entrypoints.
 
 - Commit etiquette
   - Before proposing commits, read `/Users/hananiah/Developer/Commit_Message_Rules.md` (external to repo). Follow its format and get approval before committing.
