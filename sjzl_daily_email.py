@@ -544,6 +544,8 @@ def run_once() -> int:
             title = "聖經之旅 每日內容"
 
         subject = f"聖經之旅 | {title} | {today}"
+        # Ensure subject is zh-TW as well
+        subject = _maybe_convert_zh_cn_to_zh_tw(subject)
         try:
             from bs4 import BeautifulSoup as _BS
             _s2 = _BS(html_day, "html.parser")
