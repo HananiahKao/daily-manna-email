@@ -19,23 +19,26 @@ if echo "$RESULT_JSON" | grep -q '"skip"'; then
   exit 0
 fi
 
-SELECTOR="$($VENV_PY - <<'PY'
-import json, sys
-data = json.loads(sys.stdin.read())
+SELECTOR="$(RESULT_JSON="$RESULT_JSON" "$VENV_PY" - <<'PY'
+import json, os
+data = json.loads(os.environ["RESULT_JSON"])
 print(data["selector"])
-PY <<<"$RESULT_JSON")"
+PY
+)"
 
-TARGET_DATE="$($VENV_PY - <<'PY'
-import json, sys
-data = json.loads(sys.stdin.read())
+TARGET_DATE="$(RESULT_JSON="$RESULT_JSON" "$VENV_PY" - <<'PY'
+import json, os
+data = json.loads(os.environ["RESULT_JSON"])
 print(data["date"])
-PY <<<"$RESULT_JSON")"
+PY
+)"
 
-WEEKDAY_LABEL="$($VENV_PY - <<'PY'
-import json, sys
-data = json.loads(sys.stdin.read())
+WEEKDAY_LABEL="$(RESULT_JSON="$RESULT_JSON" "$VENV_PY" - <<'PY'
+import json, os
+data = json.loads(os.environ["RESULT_JSON"])
 print(data.get("weekday", ""))
-PY <<<"$RESULT_JSON")"
+PY
+)"
 
 export EZOE_SELECTOR="$SELECTOR"
 
