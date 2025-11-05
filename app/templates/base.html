@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Daily Manna Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap">
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <header class="page-header">
+      <h1><a href="/">Daily Manna Dashboard</a></h1>
+    </header>
+    <main class="page-content">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Daily Manna{% endblock %}
+{% block content %}
+<section class="flash-messages">
+  {% if message %}
+    <div class="flash success">{{ message }}</div>
+  {% endif %}
+  {% if error %}
+    <div class="flash error">{{ error }}</div>
+  {% endif %}
+</section>
+<section class="summary">
+  <p>Displaying schedule for <strong>{{ start.isoformat() }}</strong> to <strong>{{ end.isoformat() }}</strong>.</p>
+  <p>Schedule file: <code>{{ schedule_path }}</code></p>
+</section>
+<section class="schedule-table">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Weekday</th>
+        <th>Selector</th>
+        <th>Status</th>
+        <th>Sent At</th>
+        <th>Notes</th>
+        <th>Override</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for entry in entries %}
+      {% if entry %}
+      <tr>
+        <td>{{ entry.date.isoformat() }}</td>
+        <td>{{ entry.date.strftime('%a') }}</td>
+        <td>{{ entry.selector }}</td>
+        <td>{{ entry.status }}</td>
+        <td>{{ entry.sent_at or '' }}</td>
+        <td>{{ entry.notes or '' }}</td>
+        <td>{{ entry.override or '' }}</td>
+        <td class="actions">
+          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
+            <input type="hidden" name="action" value="mark_sent">
+            <button type="submit">Mark sent</button>
+          </form>
+          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
+            <input type="hidden" name="action" value="skip">
+            <input type="text" name="note" placeholder="Reason" aria-label="Skip reason">
+            <button type="submit">Skip</button>
+          </form>
+          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
+            <input type="hidden" name="action" value="move">
+            <input type="date" name="move_date" value="{{ entry.date.isoformat() }}" aria-label="Move to date">
+            <button type="submit">Move</button>
+          </form>
+          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
+            <input type="hidden" name="action" value="selector">
+            <input type="text" name="selector" value="{{ entry.selector }}" aria-label="Selector">
+            <button type="submit">Update selector</button>
+          </form>
+          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
+            <input type="hidden" name="action" value="status">
+            <input type="text" name="status" value="{{ entry.status }}" aria-label="Status">
+            <button type="submit">Update status</button>
+          </form>
+          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
+            <input type="hidden" name="action" value="note">
+            <input type="text" name="note" placeholder="Add note" aria-label="Add note">
+            <button type="submit">Add note</button>
+          </form>
+          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
+            <input type="hidden" name="action" value="override_set">
+            <input type="text" name="override" value="{{ entry.override or '' }}" aria-label="Override descriptor">
+            <button type="submit">Set override</button>
+          </form>
+          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
+            <input type="hidden" name="action" value="override_clear">
+            <button type="submit">Clear override</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="missing">Missing schedule entry</td>
+      </tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

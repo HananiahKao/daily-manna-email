@@ -65,6 +65,24 @@ Daily Manna Email
 scripts/run_schedule_reply_processor.sh --limit 5
 ```
 
+### Admin dashboard (FastAPI)
+
+- Set `ADMIN_DASHBOARD_PASSWORD` (required) and optionally `ADMIN_DASHBOARD_USER` (default `admin`).
+- Launch locally with `uvicorn app.main:app --host 0.0.0.0 --port 8000` after exporting `.env`.
+- Authenticate via HTTP Basic using the configured credentials; the dashboard renders the current week, offers inline actions (mark sent, skip, move, update selector/status/notes/override), and displays flash messages for feedback.
+- The application reuses `schedule_manager` state, so edits made through the UI are immediately reflected in the JSON schedule and weekly summaries.
+
+### Deploying on Northflank
+
+1. Build the container image locally with `docker build -t daily-manna-email .` (or let Northflank build from the repository using the provided `Dockerfile` and `.dockerignore`).
+2. Provision a **web service** in Northflank that points at the built image, exposes port `8000`, and mounts a persistent volume at `/app/state` so the schedule JSON survives restarts.
+3. Configure environment variables/secrets: SMTP (`SMTP_*`, `EMAIL_*`), IMAP (`IMAP_*`), admin summary settings, and the new dashboard credentials (`ADMIN_DASHBOARD_PASSWORD`, optional `ADMIN_DASHBOARD_USER`, `ADMIN_DASHBOARD_TIMEZONE`).
+4. Create additional cron services in the same project using the shared image:
+   - Daily stateful send: `scripts/run_daily_stateful_ezoe.sh`
+   - Weekly summary: `scripts/run_weekly_schedule_summary.sh`
+   - Reply processor: `scripts/run_schedule_reply_processor.sh --limit 10`
+5. Ensure each cron job mounts the same persistent volume and sources the shared environment set so state and credentials are consistent across jobs.
+
 ### Migrating from `state/email_progress.json`
 
 If the legacy state file exists, seed the new schedule as follows:
