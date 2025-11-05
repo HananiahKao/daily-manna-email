@@ -10,9 +10,11 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 import schedule_manager as sm
+import schedule_reply as sr
+import schedule_reply_processor as srp
 
 try:
     import sjzl_daily_email as sjzl
@@ -21,6 +23,7 @@ except Exception:  # pragma: no cover - only needed for email summary
 
 
 SUMMARY_ARCHIVE = Path("state/last_schedule_summary.html")
+SKIP_STATUSES = {"sent", "skipped"}
 
 
 def _truthy(value: Optional[str]) -> bool:
@@ -41,11 +44,18 @@ def _entries_for_range(schedule: sm.Schedule, start: dt.date, end: dt.date) -> L
     return [schedule.get_entry(start + dt.timedelta(days=i)) for i in range(days)]
 
 
-def _render_plain(entries: Sequence[sm.ScheduleEntry], schedule_path: Path) -> str:
+def _render_plain(
+    entries: Sequence[sm.ScheduleEntry],
+    schedule_path: Path,
+    tokens: Optional[Dict[str, str]] = None,
+) -> str:
     lines: List[str] = []
     lines.append(f"Schedule file: {schedule_path}")
     lines.append("Edit selectors or notes directly in the JSON as needed before send.")
+    if tokens:
+        lines.append("Reply with commands like '[TOKEN] move 2025-06-03' to update entries (beta).")
     lines.append("")
+    token_map = tokens or {}
     for entry in entries:
         if entry is None:
             continue
@@ -54,23 +64,33 @@ def _render_plain(entries: Sequence[sm.ScheduleEntry], schedule_path: Path) -> s
         notes = f" notes={entry.notes}" if entry.notes else ""
         override = f" override={entry.override}" if entry.override else ""
         sent = f" sent_at={entry.sent_at}" if entry.sent_at else ""
+        token_display = ""
+        token = token_map.get(entry.date.isoformat())
+        if token:
+            token_display = f" token={token}"
         lines.append(
-            f"{entry.date.isoformat()} ({weekday}) selector={entry.selector} status={status}{sent}{notes}{override}"
+            f"{entry.date.isoformat()} ({weekday}) selector={entry.selector} status={status}{sent}{notes}{override}{token_display}"
         )
     return "\n".join(lines)
 
 
-def _render_html(entries: Sequence[sm.ScheduleEntry], schedule_path: Path) -> str:
+def _render_html(
+    entries: Sequence[sm.ScheduleEntry],
+    schedule_path: Path,
+    tokens: Optional[Dict[str, str]] = None,
+) -> str:
     def esc(value: Optional[str]) -> str:
         return html.escape(value or "", quote=False)
 
     rows = []
+    token_map = tokens or {}
     for entry in entries:
         if entry is None:
             continue
         weekday = sm.WEEKDAY_TW[entry.date.weekday()]
         notes = esc(entry.notes)
         override = esc(entry.override)
+        token = esc(token_map.get(entry.date.isoformat()))
         rows.append(
             "<tr>"
             f"<td>{esc(entry.date.isoformat())}</td>"
@@ -80,6 +100,7 @@ def _render_html(entries: Sequence[sm.ScheduleEntry], schedule_path: Path) -> st
             f"<td>{esc(entry.sent_at)}</td>"
             f"<td>{notes}</td>"
             f"<td>{override}</td>"
+            f"<td>{token}</td>"
             "</tr>"
         )
     rows_html = "\n".join(rows)
@@ -93,7 +114,8 @@ def _render_html(entries: Sequence[sm.ScheduleEntry], schedule_path: Path) -> st
         "th{background:#f4f4f4;}" \
         "code{font-size:0.95em;}</style></head><body>"
         f"<h2>Upcoming Week Schedule</h2><p>Edit <code>{schedule_display}</code> if adjustments are needed before sends.</p>"
-        "<table><thead><tr><th>Date</th><th>Weekday</th><th>Selector</th><th>Status</th><th>Sent At</th><th>Notes</th><th>Override</th>" \
+        "<p><strong>Reply editing (beta):</strong> Reply with lines like <code>[TOKEN] move 2025-06-03</code> to adjust entries.</p>"
+        "<table><thead><tr><th>Date</th><th>Weekday</th><th>Selector</th><th>Status</th><th>Sent At</th><th>Notes</th><th>Override</th><th>Token</th>" \
         "</tr></thead><tbody>"
         f"{rows_html}" "</tbody></table></body></html>"
     )
@@ -149,10 +171,10 @@ def _handle_next_entry(args: argparse.Namespace) -> int:
 
     force = _truthy(os.getenv("RUN_FORCE"))
     include_sent = force or args.include_sent
-    if entry.status == "sent" and not include_sent:
+    if entry.status in SKIP_STATUSES and not include_sent:
         payload = {
             "skip": True,
-            "reason": "already_sent",
+            "reason": "already_sent" if entry.status == "sent" else entry.status,
             "date": entry.date.isoformat(),
             "selector": entry.selector,
             "status": entry.status,
@@ -202,12 +224,28 @@ def _handle_ensure_week(args: argparse.Namespace) -> int:
     end = start + dt.timedelta(days=6)
 
     changed = sm.ensure_date_range(schedule, start, end)
-    if changed:
-        sm.save_schedule(schedule, schedule_path)
 
     entries = [entry for entry in _entries_for_range(schedule, start, end) if entry]
-    text_body = _render_plain(entries, schedule_path)
-    html_body = _render_html(entries, schedule_path)
+
+    meta_changed = False
+    removed = sr.purge_expired_tokens(schedule)
+    if removed:
+        meta_changed = True
+
+    token_records = []
+    token_map: Dict[str, str] = {}
+    if entries:
+        summary_id = f"{start.isoformat()}_{end.isoformat()}"
+        token_records = sr.issue_reply_tokens(schedule, entries, summary_id=summary_id)
+        if token_records:
+            meta_changed = True
+            token_map = {record.date.isoformat(): record.token for record in token_records}
+
+    if changed or meta_changed:
+        sm.save_schedule(schedule, schedule_path)
+
+    text_body = _render_plain(entries, schedule_path, tokens=token_map)
+    html_body = _render_html(entries, schedule_path, tokens=token_map)
 
     SUMMARY_ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
     SUMMARY_ARCHIVE.write_text(html_body, encoding="utf-8")
@@ -231,9 +269,33 @@ def _handle_ensure_week(args: argparse.Namespace) -> int:
         "changed": changed,
         "schedule_file": str(schedule_path),
         "emailed": emailed,
+        "token_count": len(token_records),
     }
     print(json.dumps(payload, ensure_ascii=False))
     return 0
+
+
+def _handle_apply_reply(args: argparse.Namespace) -> int:
+    schedule_path = sm.get_schedule_path()
+    schedule = sm.load_schedule(schedule_path)
+
+    if args.input:
+        body = Path(args.input).read_text(encoding="utf-8")
+    else:
+        body = sys.stdin.read()
+
+    if not body.strip():
+        print(json.dumps({"error": "empty_input", "schedule_file": str(schedule_path)}))
+        return 1
+
+    result = srp.process_email(schedule, body)
+    if result.changed:
+        sm.save_schedule(schedule, schedule_path)
+
+    payload = result.to_dict()
+    payload["schedule_file"] = str(schedule_path)
+    print(json.dumps(payload, ensure_ascii=False))
+    return 0 if not result.errors else 1
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -253,6 +315,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ensure_cmd.add_argument("--start", help="Start date override (ISO or descriptor); Monday of that week is used")
     ensure_cmd.add_argument("--email", action="store_true", help="Send admin summary email")
     ensure_cmd.set_defaults(func=_handle_ensure_week)
+
+    apply_cmd = sub.add_parser("apply-reply", help="Apply admin reply commands from an email body")
+    apply_cmd.add_argument("--input", help="Path to file containing the email body (defaults to stdin)")
+    apply_cmd.set_defaults(func=_handle_apply_reply)
 
     args = parser.parse_args(argv)
     return args.func(args)
