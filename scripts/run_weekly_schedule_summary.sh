@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_DIR="/Users/hananiah/Developer/daily-manna-email"
-VENV_PY="$REPO_DIR/.venv/bin/python"
-ENV_FILE="$REPO_DIR/.env"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$ROOT/.env"
 
-cd "$REPO_DIR"
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+  if [[ -x "$ROOT/.venv/bin/python" ]]; then
+    PYTHON_BIN="$ROOT/.venv/bin/python"
+  else
+    PYTHON_BIN="python3"
+  fi
+fi
+
+cd "$ROOT"
 
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
@@ -13,4 +20,4 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 echo "Preparing upcoming week schedule and emailing summary..."
-"$VENV_PY" schedule_tasks.py ensure-week --email
+"$PYTHON_BIN" schedule_tasks.py ensure-week --email
