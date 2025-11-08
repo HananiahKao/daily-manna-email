@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
+import sys
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -12,10 +13,15 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# Ensure modules at the repo root (e.g. schedule_manager) remain importable when uvicorn sets --app-dir
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
+
 import schedule_manager as sm
 
-from .config import AppConfig, get_config
-from .security import require_user
+from app.config import AppConfig, get_config
+from app.security import require_user
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
