@@ -1,0 +1,31 @@
+[
+  {
+    "name": "weekday-send",
+    "time": "06:00",
+    "days": ["mon", "tue", "wed", "thu", "fri", "sat"],
+    "commands": [
+      ["bash", "scripts/run_daily_stateful_ezoe.sh"]
+    ]
+  },
+  {
+    "name": "sunday-combo",
+    "time": "06:00",
+    "days": ["sun"],
+    "commands": [
+      ["bash", "scripts/run_weekly_schedule_summary.sh"],
+      ["bash", "scripts/run_daily_stateful_ezoe.sh"]
+    ]
+  },
+  {
+    "name": "hourly-replies",
+    "time": "00:00",
+    "days": ["daily"],
+    "commands": [
+      [
+        "bash",
+        "-lc",
+        "scripts/run_schedule_reply_processor.sh --limit 10"
+      ]
+    ]
+  }
+]

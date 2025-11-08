@@ -76,6 +76,8 @@ Daily Manna Email
   - Any command entry can be either an argv array (preferred) or a shell string (it is wrapped with `bash -lc ...` automatically).
   - Cron example (UTC every 10 minutes): `*/10 * * * * cd /app && python job_dispatcher.py`
   - Use `python job_dispatcher.py --dry-run` to verify what would run, or `--show-config` to print the currently active rules.
+- Production cron wrappers can call `scripts/run_dispatcher.sh`, which already activates the virtualenv and sources `.env`.
+- A more advanced sample config lives at `docs/dispatch_rules.example.json`.
 
 ### Admin CLI quick reference
 
@@ -108,50 +110,7 @@ scripts/run_schedule_reply_processor.sh --limit 5
 
 ### Deploying on PythonAnywhere
 
-1. **Clone + virtualenv**
-   - Create or upgrade to a paid PythonAnywhere account (needed for unrestricted network/always-on tasks).
-   - In a Bash console, clone the repo into `~/daily-manna-email`, create a virtualenv, and install dependencies:
-     ```bash
-     git clone <repo> ~/daily-manna-email
-     cd ~/daily-manna-email
-     python3.10 -m venv .venv
-     source .venv/bin/activate
-     pip install -r requirements.txt
-     ```
-   - Copy your `.env` into the project root; the `job_dispatcher.py`/scripts auto-source it.
-
-2. **ASGI dashboard**
-   - Install the PythonAnywhere CLI and request ASGI access (beta) via the “Send feedback” link if needed.
-   - From a Bash console:
-     ```bash
-     pip install --upgrade pythonanywhere
-     pa website create --domain YOURNAME.pythonanywhere.com \
-       --command "/home/YOURNAME/daily-manna-email/.venv/bin/uvicorn \
-                  --app-dir /home/YOURNAME/daily-manna-email/app \
-                  --uds ${DOMAIN_SOCKET} main:app"
-     ```
-   - Logs live under `/var/log/YOURNAME.pythonanywhere.com.*.log`.
-
-3. **Environment + timezone**
-   - Add `TZ="Asia/Taipei"` and `set -a; source ~/daily-manna-email/.env; set +a` to `~/.bashrc` or your virtualenv `postactivate` script so scheduled jobs inherit the full configuration.
-   - For the dashboard WSGI hook, use `python-dotenv` (already in `requirements.txt`) inside `app/asgi.py` or the CLI command above.
-
-4. **Scheduled + always-on tasks**
-   - Use the dispatcher to consolidate cron logic. Create a paid scheduled task that runs every 10 minutes:
-     ```
-     bash -lc 'cd ~/daily-manna-email && source .venv/bin/activate && python job_dispatcher.py'
-     ```
-     The default rules will trigger the daily send at 06:00 Taiwan and the weekly summary each Sunday night. Customize timings via `state/dispatch_rules.json`.
-   - For IMAP reply automation, start an **Always-on task** (paid feature):
-     ```
-     bash -lc 'cd ~/daily-manna-email && source .venv/bin/activate && \
-               python scripts/process_schedule_replies.py --limit 10'
-     ```
-     Always-on tasks auto-restart after maintenance and respect your `.env`.
-
-5. **Backups + state**
-   - All state files stay under `~/daily-manna-email/state/` (persistent storage). Use `rsync`/`git` for backups as needed.
-   - Monitor scheduled task logs from the PythonAnywhere “Tasks” page; dispatcher output makes it clear which jobs fired each run.
+See `docs/DEPLOYMENT_PYTHONANYWHERE.md` for a full walkthrough (virtualenv, ASGI CLI, dispatcher cron, and always-on IMAP processing).
 
 ### Migrating from `state/email_progress.json`
 
