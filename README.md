@@ -43,6 +43,40 @@ Daily Manna Email
 - Run `scripts/run_schedule_reply_processor.sh` (cron-friendly) or invoke the Python CLI directly: `scripts/process_schedule_replies.py --limit 5`.
 - The processor reads unseen replies, applies commands via `schedule_tasks.py apply-reply`, stores a JSON report at `state/last_reply_results.json`, and emails a confirmation summary (applied vs. rejected commands) back to the admin.
 
+### Dispatcher (single cron entry)
+
+- `python job_dispatcher.py`
+  - Evaluates the current Taiwan time and fans out to the daily send, weekly summary, or any custom combo you define.
+  - Default rules (when `state/dispatch_rules.json` is absent):
+    - `daily-send`: every day at 06:00 Taiwan → `bash scripts/run_daily_stateful_ezoe.sh`
+    - `weekly-summary`: Sundays at 21:00 Taiwan → `bash scripts/run_weekly_schedule_summary.sh`
+  - The dispatcher persists state in `state/dispatch_state.json` so each rule fires once per window even if the cron job runs every few minutes.
+  - Override or extend the behavior by creating `state/dispatch_rules.json` with content like:
+    ```json
+    [
+      {
+        "name": "weekday-send",
+        "time": "06:00",
+        "days": ["mon","tue","wed","thu","fri","sat"],
+        "commands": [
+          ["bash", "scripts/run_daily_stateful_ezoe.sh"]
+        ]
+      },
+      {
+        "name": "sunday-combo",
+        "time": "06:00",
+        "days": ["sun"],
+        "commands": [
+          ["bash", "scripts/run_weekly_schedule_summary.sh"],
+          ["bash", "scripts/run_daily_stateful_ezoe.sh"]
+        ]
+      }
+    ]
+    ```
+  - Any command entry can be either an argv array (preferred) or a shell string (it is wrapped with `bash -lc ...` automatically).
+  - Cron example (UTC every 10 minutes): `*/10 * * * * cd /app && python job_dispatcher.py`
+  - Use `python job_dispatcher.py --dry-run` to verify what would run, or `--show-config` to print the currently active rules.
+
 ### Admin CLI quick reference
 
 ```
@@ -72,16 +106,52 @@ scripts/run_schedule_reply_processor.sh --limit 5
 - Authenticate via HTTP Basic using the configured credentials; the dashboard renders the current week, offers inline actions (mark sent, skip, move, update selector/status/notes/override), and displays flash messages for feedback.
 - The application reuses `schedule_manager` state, so edits made through the UI are immediately reflected in the JSON schedule and weekly summaries.
 
-### Deploying on Northflank
+### Deploying on PythonAnywhere
 
-1. Build the container image locally with `docker build -t daily-manna-email .` (or let Northflank build from the repository using the provided `Dockerfile` and `.dockerignore`).
-2. Provision a **web service** in Northflank that points at the built image, exposes port `8000`, and mounts a persistent volume at `/app/state` so the schedule JSON survives restarts.
-3. Configure environment variables/secrets: SMTP (`SMTP_*`, `EMAIL_*`), IMAP (`IMAP_*`), admin summary settings, and the new dashboard credentials (`ADMIN_DASHBOARD_PASSWORD`, optional `ADMIN_DASHBOARD_USER`, `ADMIN_DASHBOARD_TIMEZONE`).
-4. Create additional cron services in the same project using the shared image:
-   - Daily stateful send: `scripts/run_daily_stateful_ezoe.sh`
-   - Weekly summary: `scripts/run_weekly_schedule_summary.sh`
-   - Reply processor: `scripts/run_schedule_reply_processor.sh --limit 10`
-5. Ensure each cron job mounts the same persistent volume and sources the shared environment set so state and credentials are consistent across jobs.
+1. **Clone + virtualenv**
+   - Create or upgrade to a paid PythonAnywhere account (needed for unrestricted network/always-on tasks).
+   - In a Bash console, clone the repo into `~/daily-manna-email`, create a virtualenv, and install dependencies:
+     ```bash
+     git clone <repo> ~/daily-manna-email
+     cd ~/daily-manna-email
+     python3.10 -m venv .venv
+     source .venv/bin/activate
+     pip install -r requirements.txt
+     ```
+   - Copy your `.env` into the project root; the `job_dispatcher.py`/scripts auto-source it.
+
+2. **ASGI dashboard**
+   - Install the PythonAnywhere CLI and request ASGI access (beta) via the “Send feedback” link if needed.
+   - From a Bash console:
+     ```bash
+     pip install --upgrade pythonanywhere
+     pa website create --domain YOURNAME.pythonanywhere.com \
+       --command "/home/YOURNAME/daily-manna-email/.venv/bin/uvicorn \
+                  --app-dir /home/YOURNAME/daily-manna-email/app \
+                  --uds ${DOMAIN_SOCKET} main:app"
+     ```
+   - Logs live under `/var/log/YOURNAME.pythonanywhere.com.*.log`.
+
+3. **Environment + timezone**
+   - Add `TZ="Asia/Taipei"` and `set -a; source ~/daily-manna-email/.env; set +a` to `~/.bashrc` or your virtualenv `postactivate` script so scheduled jobs inherit the full configuration.
+   - For the dashboard WSGI hook, use `python-dotenv` (already in `requirements.txt`) inside `app/asgi.py` or the CLI command above.
+
+4. **Scheduled + always-on tasks**
+   - Use the dispatcher to consolidate cron logic. Create a paid scheduled task that runs every 10 minutes:
+     ```
+     bash -lc 'cd ~/daily-manna-email && source .venv/bin/activate && python job_dispatcher.py'
+     ```
+     The default rules will trigger the daily send at 06:00 Taiwan and the weekly summary each Sunday night. Customize timings via `state/dispatch_rules.json`.
+   - For IMAP reply automation, start an **Always-on task** (paid feature):
+     ```
+     bash -lc 'cd ~/daily-manna-email && source .venv/bin/activate && \
+               python scripts/process_schedule_replies.py --limit 10'
+     ```
+     Always-on tasks auto-restart after maintenance and respect your `.env`.
+
+5. **Backups + state**
+   - All state files stay under `~/daily-manna-email/state/` (persistent storage). Use `rsync`/`git` for backups as needed.
+   - Monitor scheduled task logs from the PythonAnywhere “Tasks” page; dispatcher output makes it clear which jobs fired each run.
 
 ### Migrating from `state/email_progress.json`
 
