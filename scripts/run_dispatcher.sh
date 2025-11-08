@@ -20,4 +20,4 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 cd "$ROOT"
-"$PYTHON_BIN" scripts/process_schedule_replies.py "$@"
+"$PYTHON_BIN" job_dispatcher.py "$@"
