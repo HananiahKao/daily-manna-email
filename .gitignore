@@ -2,6 +2,7 @@
 .venv/
 .env
 .sjzl_env
+state/
 __pycache__/
 *.pyc
 .pytest_cache/
