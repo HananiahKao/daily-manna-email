@@ -1,91 +1,88 @@
 {% extends "base.html" %}
-{% block title %}Dashboard · Daily Manna{% endblock %}
+{% block title %}Calendar · Daily Manna{% endblock %}
 {% block content %}
-<section class="flash-messages">
+<section id="flash-messages" class="flash-messages">
   {% if message %}
-    <div class="flash success">{{ message }}</div>
+    <div class="flash success" data-type="success">{{ message }}</div>
   {% endif %}
   {% if error %}
-    <div class="flash error">{{ error }}</div>
+    <div class="flash error" data-type="error">{{ error }}</div>
   {% endif %}
 </section>
 <section class="summary">
-  <p>Displaying schedule for <strong>{{ start.isoformat() }}</strong> to <strong>{{ end.isoformat() }}</strong>.</p>
   <p>Schedule file: <code>{{ schedule_path }}</code></p>
 </section>
-<section class="schedule-table">
-  <table>
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Weekday</th>
-        <th>Selector</th>
-        <th>Status</th>
-        <th>Sent At</th>
-        <th>Notes</th>
-        <th>Override</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for entry in entries %}
-      {% if entry %}
-      <tr>
-        <td>{{ entry.date.isoformat() }}</td>
-        <td>{{ entry.date.strftime('%a') }}</td>
-        <td>{{ entry.selector }}</td>
-        <td>{{ entry.status }}</td>
-        <td>{{ entry.sent_at or '' }}</td>
-        <td>{{ entry.notes or '' }}</td>
-        <td>{{ entry.override or '' }}</td>
-        <td class="actions">
-          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
-            <input type="hidden" name="action" value="mark_sent">
-            <button type="submit">Mark sent</button>
-          </form>
-          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
-            <input type="hidden" name="action" value="skip">
-            <input type="text" name="note" placeholder="Reason" aria-label="Skip reason">
-            <button type="submit">Skip</button>
-          </form>
-          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
-            <input type="hidden" name="action" value="move">
-            <input type="date" name="move_date" value="{{ entry.date.isoformat() }}" aria-label="Move to date">
-            <button type="submit">Move</button>
-          </form>
-          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
-            <input type="hidden" name="action" value="selector">
-            <input type="text" name="selector" value="{{ entry.selector }}" aria-label="Selector">
-            <button type="submit">Update selector</button>
-          </form>
-          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
-            <input type="hidden" name="action" value="status">
-            <input type="text" name="status" value="{{ entry.status }}" aria-label="Status">
-            <button type="submit">Update status</button>
-          </form>
-          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
-            <input type="hidden" name="action" value="note">
-            <input type="text" name="note" placeholder="Add note" aria-label="Add note">
-            <button type="submit">Add note</button>
-          </form>
-          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
-            <input type="hidden" name="action" value="override_set">
-            <input type="text" name="override" value="{{ entry.override or '' }}" aria-label="Override descriptor">
-            <button type="submit">Set override</button>
-          </form>
-          <form method="post" action="{{ url_for('handle_action', date=entry.date.isoformat()) }}">
-            <input type="hidden" name="action" value="override_clear">
-            <button type="submit">Clear override</button>
-          </form>
-        </td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="8" class="missing">Missing schedule entry</td>
-      </tr>
-      {% endif %}
-    {% endfor %}
-    </tbody>
-  </table>
+<section class="calendar-shell">
+  <header class="calendar-toolbar">
+    <div class="calendar-toolbar-info">
+      <h2 id="month-year" class="calendar-range">Loading...</h2>
+      <p class="calendar-help-text">Shift-click to multi-select, drag selections to move, or press <kbd>Shift</kbd>+<kbd>D</kbd> to jump to a specific date.</p>
+    </div>
+    <div class="calendar-toolbar-controls">
+      <button type="button" id="prev-month" aria-label="Previous month">‹</button>
+      <button type="button" id="today-month">Today</button>
+      <button type="button" id="next-month" aria-label="Next month">›</button>
+    </div>
+  </header>
+  <div id="calendar-scroll" class="calendar-scroll" aria-live="polite"></div>
 </section>
+<div id="calendar-popover" class="calendar-popover" hidden role="dialog" aria-modal="true" aria-labelledby="popover-date-label">
+  <form id="popover-form">
+    <header class="popover-header">
+      <div>
+        <p class="popover-date" id="popover-date-label"></p>
+        <p class="popover-meta" id="popover-sent-meta"></p>
+      </div>
+      <button type="button" class="popover-close" data-action="close" aria-label="Close popover">×</button>
+    </header>
+    <input type="hidden" name="date" id="popover-date" value="">
+    <div class="popover-field">
+      <label for="popover-selector">Selector</label>
+      <input type="text" id="popover-selector" name="selector" placeholder="e.g. 2-1-3" required>
+    </div>
+    <div class="popover-field">
+      <label for="popover-status">Status</label>
+      <select id="popover-status" name="status">
+        <option value="">-- Select status --</option>
+        <option value="pending">Pending</option>
+        <option value="sent">Sent</option>
+        <option value="skipped">Skipped</option>
+      </select>
+    </div>
+    <div class="popover-field">
+      <label for="popover-notes">Notes</label>
+      <textarea id="popover-notes" name="notes" rows="3" placeholder="Add context"></textarea>
+    </div>
+    <div class="popover-field">
+      <label for="popover-override">Override descriptor</label>
+      <input type="text" id="popover-override" name="override" placeholder="Optional override">
+    </div>
+    <div class="popover-actions">
+      <div class="popover-action-group">
+        <button type="submit" class="primary">Save</button>
+        <button type="button" data-action="mark-sent">Mark sent</button>
+        <button type="button" data-action="mark-skipped">Mark skipped</button>
+      </div>
+      <button type="button" data-action="close">Cancel</button>
+    </div>
+  </form>
+</div>
+<div id="date-adjust-overlay" class="calendar-move-overlay" hidden>
+  <form id="date-adjust-form" class="calendar-move-card">
+    <p>Move selected events to:</p>
+    <input type="date" id="date-adjust-input" required>
+    <div class="overlay-actions">
+      <button type="submit" class="primary">Apply</button>
+      <button type="button" data-action="cancel">Cancel</button>
+    </div>
+  </form>
+</div>
+<script>
+  window.CalendarConfig = {
+    schedulePath: "{{ schedule_path }}",
+    message: null,
+    error: null
+  };
+</script>
+<script src="/static/calendar.js" defer></script>
 {% endblock %}
