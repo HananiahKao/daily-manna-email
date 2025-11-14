@@ -4,7 +4,8 @@
 
 - **Person · Daily Recipient** — receives the daily "聖經之旅" email content; no direct interaction other than reading messages.
 - **Person · Admin Maintainer** — reviews weekly summaries, sends adjustment replies, and oversees delivery.
-- **System · Daily Manna Email** — automates lesson selection, email delivery, scheduling, and admin feedback processing.
+- **Person · Web Admin** — accesses the web dashboard to interactively manage schedule entries, view calendar, and perform administrative tasks.
+- **System · Daily Manna Email** — automates lesson selection, email delivery, scheduling, admin feedback processing, and provides a web dashboard for management.
 - **System · EZOe Content Source (ezoe.work)** — provides lesson HTML scraped for selector-based sends.
 - **System · Legacy Content Source (four.soqimp.com)** — fallback lesson discovery endpoint for SJZL mode.
 - **System · SMTP Relay** — external email service used for all outbound messages.
@@ -13,6 +14,7 @@
 ```mermaid
 flowchart LR
     Admin([Admin Maintainer])
+    WebAdmin([Web Admin])
     Recipient([Daily Recipient])
     System[[Daily Manna Email]]
     SMTP[(SMTP Relay)]
@@ -21,6 +23,7 @@ flowchart LR
     Legacy[(Legacy Content Source)]
 
     Admin <-- Weekly summary & replies --> System
+    WebAdmin <-- Interactive management --> System
     System --> Recipient
     System --> SMTP
     SMTP --> Recipient
@@ -34,6 +37,8 @@ flowchart LR
              ↑                          ⇣
        (Weekly summary & replies)   [Daily Recipient]
 
+[Web Admin] ⇄ [Daily Manna Email]
+
 [Daily Manna Email] ⇄ [EZOe Content Source]
 [Daily Manna Email] ⇄ [Legacy Content Source]
 ```
@@ -43,13 +48,14 @@ flowchart LR
 | Container | Tech | Responsibilities | Key Interactions |
 |-----------|------|------------------|------------------|
 | **Cron / Scheduler** | Bash (`scripts/run_*`) | Entry points triggered by cron; loads `.env`; invokes Python CLIs. | Calls Python containers below. |
-| **Schedule Service** | Python (`schedule_tasks.py`, `schedule_manager.py`) | Maintains `state/ezoe_schedule.json`; calculates next selector; renders weekly summaries; issues reply tokens. | Reads/writes JSON state; invokes Email Delivery. |
+| **Schedule Service** | Python (`schedule_tasks.py`, `schedule_manager.py`) | Maintains `state/ezoe_schedule.json`; calculates next selector; renders weekly summaries; issues reply tokens. | Reads/writes JSON state; invokes Email Delivery and Web Dashboard. |
 | **Email Delivery** | Python (`sjzl_daily_email.py`) | Fetches lesson HTML, wraps content, composes multipart emails, sends via SMTP. | Reads env vars; calls `requests` for scraping; uses SMTP relay. |
 | **Content Scraper** | Python (`ezoe_week_scraper.py`) | Pulls specific lesson/day HTML from ezoe.work with UTF-8 safeguards. | Invoked by Email Delivery when `EZOE_SELECTOR` is set. |
 | **Admin Reply Processor** | Python (`schedule_reply.py`, `schedule_reply_processor.py`, `schedule_reply_fetcher.py`, `scripts/process_schedule_replies.py`) | Fetches IMAP mail, parses reply tokens, applies adjustments, sends confirmation emails, archives results. | Reads IMAP; updates schedule; calls Email Delivery. |
-| **State Store** | JSON files (`state/*.json`) | Persists schedule, weekly summary, and reply processing outcomes. | Used by Schedule Service and Admin Reply Processor. |
+| **Web Dashboard** | Python (FastAPI, `app/main.py`, `app/templates`, `app/static`) | Provides interactive web interface for viewing and editing schedule entries, calendar display, and administrative actions. | Reads/writes JSON state via Schedule Service; handles authentication. |
+| **State Store** | JSON files (`state/*.json`) | Persists schedule, weekly summary, reply processing outcomes, and HTML archives. | Used by Schedule Service, Admin Reply Processor, and Web Dashboard. |
 
-Data flow: Cron scripts orchestrate the Schedule Service, which selects a selector, triggers the Email Delivery container (which in turn uses the Content Scraper when needed) and updates the State Store. Admin Reply Processor reads weekly emails, applies modifications to the State Store, and sends confirmations through Email Delivery.
+Data flow: Cron scripts orchestrate the Schedule Service, which selects a selector, triggers the Email Delivery container (which in turn uses the Content Scraper when needed) and updates the State Store. Admin Reply Processor reads weekly emails, applies modifications to the State Store, and sends confirmations through Email Delivery. Web Dashboard provides interactive access to Schedule Service and State Store for manual management.
 
 ```mermaid
 flowchart TB
@@ -78,7 +84,12 @@ flowchart TB
         ApplyInstr[[schedule_reply_processor.py]]
     end
 
-    State[(state/*.json)]
+    subgraph WebDash["Web Dashboard (app/main.py)"]
+        DashboardAPI[[Dashboard & APIs]]
+        Authenticate[[Authentication]]
+    end
+
+    State[(state/*.json & HTML archives)]
     SMTPRelay[(SMTP Relay)]
     IMAPMailbox[(IMAP Mailbox)]
     Ezoe[(ezoe.work)]
@@ -104,9 +115,13 @@ flowchart TB
     ApplyInstr --> SMTPClient
     FetchCompose --> Ezoe
     FetchCompose --> Legacy
+    DashboardAPI --> State
+    Authenticate --> DashboardAPI
+    DashboardAPI --> NextEntry
+    DashboardAPI --> EnsureWeek
 ```
 
-## Level 3 · Components (Schedule Service & Admin Loop)
+## Level 3 · Components (Schedule Service, Admin Loop & Web Dashboard)
 
 ### Schedule Service Components
 
@@ -135,6 +150,17 @@ flowchart TB
 | `schedule_reply_fetcher.process_mailbox` | Connects to IMAP, filters allowed senders, extracts text, invokes processor, archives results. | Uses `ADMIN_REPLY_*` and `IMAP_*` env vars. |
 | `scripts/process_schedule_replies.py` | CLI wrapper with `--limit` and `--dry-run` for cron/tests. | Used by `scripts/run_schedule_reply_processor.sh`. |
 
+### Web Dashboard Components
+
+| Component | Responsibility | Notes |
+|-----------|----------------|-------|
+| `app.main.create_app` | Bootstraps FastAPI app with mounted static files, Jinja2 templates, and routes. | Imports schedule modules; configures authentication middleware. |
+| `app.main.dashboard` | Renders calendar dashboard HTML; loads week data via Schedule. | Requires authentication; displays start/end week, messages/errors. |
+| `app.main.api_month` | JSON API for monthly calendar grid with entry serialization. | Fetches schedule entries; includes calendar grid padding. |
+| API endpoints (`api_upsert_entry`, `api_move_entry`, `api_move_entries`) | Handles CRUD operations on schedule entries via JSON payloads. | Validates payloads; persists to JSON state. |
+| `app.main.handle_action` | Processes form-based actions (mark sent, skip, note, move, etc.). | Accepts form data; redirects with messages/errors. |
+| `app.security.require_user` | Dependency for authentication; checks credentials. | Uses `USERNAME`/`PASSWORD` env vars or default. |
+
 ```mermaid
 flowchart LR
     subgraph ScheduleSvc["Schedule Service"]
@@ -157,7 +183,16 @@ flowchart LR
         FetchMailbox[[schedule_reply_fetcher.process_mailbox]]
     end
 
-    State[(state/ezoe_schedule.json & archives)]
+    subgraph WebSvc["Web Dashboard"]
+        CreateApp[[app.main.create_app]]
+        Dashboard[[app.main.dashboard]]
+        ApiMonth[[app.main.api_month]]
+        ApiCrud[[API Endpoints]]
+        HandleAction[[app.main.handle_action]]
+        AuthDep[[app.security.require_user]]
+    end
+
+    State[(state/ezoe_schedule.json & HTML archives)]
 
     NextEntry --> Manager
     EnsureWeek --> IssueTokens
@@ -166,6 +201,14 @@ flowchart LR
     DayHtml --> WrapHtml --> SendEmail
     FetchMailbox --> ParseBody --> ApplyInstr --> Manager
     ApplyInstr --> SendEmail
+    Dashboard --> Manager
+    ApiMonth --> Manager
+    ApiCrud --> Manager
+    HandleAction --> Manager
+    AuthDep --> Dashboard
+    AuthDep --> ApiMonth
+    AuthDep --> ApiCrud
+    AuthDep --> HandleAction
     Manager --> State
     IssueTokens --> Manager
     FetchMailbox --> IssueTokens
@@ -173,8 +216,9 @@ flowchart LR
 
 ## Deployment & Infrastructure Notes
 
-- **Environment Configuration** — `.env` holds SMTP, IMAP, and schedule overrides; scripts source it automatically. Key vars: `EZOE_SELECTOR`, `SMTP_*`, `EMAIL_*`, `ADMIN_SUMMARY_*`, `IMAP_*`, `RUN_FORCE`, `EZOE_VOLUME/EZOE_LESSON/EZOE_DAY_START`.
-- **State Management** — JSON files under `state/` act as lightweight persistence. Ensure cron jobs have read/write access.
+- **Environment Configuration** — `.env` holds SMTP, IMAP, dashboard credentials (`USERNAME`, `PASSWORD`), and schedule overrides; scripts source it automatically. Key vars: `EZOE_SELECTOR`, `SMTP_*`, `EMAIL_*`, `ADMIN_SUMMARY_*`, `IMAP_*`, `RUN_FORCE`, `EZOE_VOLUME/EZOE_LESSON/EZOE_DAY_START`.
+- **State Management** — JSON files and HTML archives under `state/` act as lightweight persistence. Ensure cron jobs and web server have read/write access.
 - **External Dependencies** — Outbound HTTPS (scraping), SMTP, and IMAP connectivity must be available. Rate limiting is enforced via `POLITE_DELAY_MS`.
+- **Web Deployment** — FastAPI app can be run via `uvicorn` or ASGI server; mounted static files and Jinja2 templates for frontend assets.
 
 This textual C4 description complements `SYSTEM_ARCHITECTURE.md` by emphasizing structural boundaries and interactions across system levels.
