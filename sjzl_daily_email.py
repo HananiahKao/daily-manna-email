@@ -510,6 +510,27 @@ def run_once() -> int:
             if "Try:" in msg or "Try selector:" in msg:
                 logger.error("Suggested next selector: %s", msg)
             return 2
+
+        # Remove links from content to make it suitable for email (links are interactive on website but not in email)
+        soup = BeautifulSoup(html_day, "html.parser")
+        for a in soup.find_all("a"):
+            a.unwrap()  # Remove <a> tags but keep the text content
+
+        # Remove modal dialog artifacts that are non-functional in email
+        for modal in soup.find_all("div", {"class": "modal"}):
+            modal.decompose()
+
+        # Remove navigation images and unwanted UI elements
+        for img in soup.find_all("img"):
+            img.decompose()
+        # Remove the styled span container if it's just for a home button image
+        for span in soup.find_all("span", style=True):
+            style_attr = str(span.get("style") or "")
+            if "max-width" in style_attr and "background-color" in style_attr and not span.get_text(strip=True):
+                span.decompose()
+
+        html_day = str(soup)
+
         _debug_preview("EZOE_HTML", html_day)
 
         # When debugging, persist the raw day HTML to inspect content before wrapping/conversion.
