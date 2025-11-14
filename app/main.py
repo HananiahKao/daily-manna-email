@@ -5,13 +5,14 @@ from __future__ import annotations
 import datetime as dt
 from pathlib import Path
 import sys
-from typing import Optional
+from typing import Dict, List, Optional
 from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, validator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # Ensure modules at the repo root (e.g. schedule_manager) remain importable when uvicorn sets --app-dir
@@ -26,6 +27,51 @@ from app.security import require_user
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+
+class EntryPayload(BaseModel):
+    date: dt.date
+    selector: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    override: Optional[str] = None
+
+    @validator("selector")
+    def _validate_selector(cls, value: Optional[str]) -> Optional[str]:
+        if value:
+            sm.parse_selector(value)
+        return value
+
+    @validator("status")
+    def _normalize_status(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    @validator("notes", "override", pre=True)
+    def _stringify_optional(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return str(value)
+
+
+class EntryMovePayload(BaseModel):
+    new_date: dt.date
+
+
+class MultiMovePayload(BaseModel):
+    source_dates: List[dt.date]
+    target_date: dt.date
+
+    @validator("source_dates")
+    def _ensure_sources(cls, value: List[dt.date]) -> List[dt.date]:
+        if not value:
+            raise ValueError("source_dates cannot be empty")
+        seen: Dict[dt.date, None] = {}
+        for item in value:
+            seen.setdefault(item, None)
+        return list(seen.keys())
 
 
 def create_app() -> FastAPI:
@@ -51,15 +97,9 @@ def create_app() -> FastAPI:
 
         today = sm.taipei_today()
         start = today - dt.timedelta(days=today.weekday())
-        end = start + dt.timedelta(days=6)
-        changed = sm.ensure_date_range(schedule, start, end)
-        if changed:
-            sm.save_schedule(schedule, schedule_path)
-
-        entries = [schedule.get_entry(start + dt.timedelta(days=offset)) for offset in range(7)]
+        end = _ensure_week(schedule, start, schedule_path)
 
         context = {
-            "entries": entries,
             "schedule_path": schedule_path,
             "start": start,
             "end": end,
@@ -67,6 +107,164 @@ def create_app() -> FastAPI:
             "error": request.query_params.get("error"),
         }
         return templates.TemplateResponse(request, "dashboard.html", context)
+
+    @app.get("/api/month", response_class=JSONResponse)
+    def api_month(
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+        _: str = Depends(require_user),
+        settings: AppConfig = Depends(get_config),
+    ) -> JSONResponse:
+        schedule_path = _resolve_schedule_path(settings)
+        schedule = sm.load_schedule(schedule_path)
+
+        # Default to current month if not specified
+        if year is None or month is None:
+            today = sm.taipei_today()
+            year = today.year
+            month = today.month
+
+        # Calculate month boundaries
+        month_start = dt.date(year, month, 1)
+        # Find first day of the calendar grid (previous Monday)
+        calendar_start = month_start - dt.timedelta(days=month_start.weekday())
+        # Find last day of the calendar grid (next Sunday after month end)
+        month_end = _get_month_end(year, month)
+        calendar_end = month_end + dt.timedelta(days=(6 - month_end.weekday()))
+
+        entries = []
+        current_date = calendar_start
+        while current_date <= calendar_end:
+            entry = schedule.get_entry(current_date)
+            serialized = _serialize_entry(entry, current_date)
+            # Add flag to indicate if this day belongs to the current month
+            serialized["is_current_month"] = current_date.month == month
+            entries.append(serialized)
+            current_date += dt.timedelta(days=1)
+
+        payload = {
+            "year": year,
+            "month": month,
+            "month_start": month_start.isoformat(),
+            "month_end": month_end.isoformat(),
+            "calendar_start": calendar_start.isoformat(),
+            "calendar_end": calendar_end.isoformat(),
+            "entries": entries,
+            "schedule_path": str(schedule_path),
+        }
+        return JSONResponse(payload)
+
+    # Keep the old week endpoint for backward compatibility
+    @app.get("/api/week", response_class=JSONResponse)
+    def api_week(
+        start_date: Optional[str] = None,
+        _: str = Depends(require_user),
+        settings: AppConfig = Depends(get_config),
+    ) -> JSONResponse:
+        schedule_path = _resolve_schedule_path(settings)
+        schedule = sm.load_schedule(schedule_path)
+        start = _normalize_week_start(start_date)
+        end = _ensure_week(schedule, start, schedule_path)
+        entries = []
+        for offset in range(7):
+            day = start + dt.timedelta(days=offset)
+            entries.append(_serialize_entry(schedule.get_entry(day), day))
+        payload = {
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "entries": entries,
+            "schedule_path": str(schedule_path),
+        }
+        return JSONResponse(payload)
+
+    @app.post("/api/entry", response_class=JSONResponse)
+    def api_upsert_entry(
+        payload: EntryPayload,
+        _: str = Depends(require_user),
+        settings: AppConfig = Depends(get_config),
+    ) -> JSONResponse:
+        schedule_path = _resolve_schedule_path(settings)
+        schedule = sm.load_schedule(schedule_path)
+        entry = schedule.get_entry(payload.date)
+        created = False
+        if not entry:
+            if not payload.selector:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selector required for new entry")
+            entry = sm.ScheduleEntry(date=payload.date, selector=payload.selector)
+            schedule.upsert_entry(entry)
+            created = True
+        if payload.selector:
+            entry.selector = payload.selector
+        if payload.status:
+            entry.status = payload.status
+            if payload.status == "sent":
+                entry.sent_at = dt.datetime.now(tz=sm.TAIWAN_TZ).isoformat()
+            else:
+                entry.sent_at = None
+        if payload.notes is not None:
+            entry.notes = payload.notes
+        if payload.override is not None:
+            entry.override = payload.override.strip() or None
+        sm.save_schedule(schedule, schedule_path)
+        return JSONResponse({"entry": _serialize_entry(entry, entry.date), "created": created})
+
+    @app.post("/api/entry/{date}/move", response_class=JSONResponse)
+    def api_move_entry(
+        date: dt.date,
+        payload: EntryMovePayload,
+        _: str = Depends(require_user),
+        settings: AppConfig = Depends(get_config),
+    ) -> JSONResponse:
+        schedule_path = _resolve_schedule_path(settings)
+        schedule = sm.load_schedule(schedule_path)
+        entry = schedule.get_entry(date)
+        if not entry:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+        existing = schedule.get_entry(payload.new_date)
+        if existing and existing is not entry:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target date already has an entry")
+        entry.date = payload.new_date
+        schedule.entries.sort(key=lambda item: item.date)
+        sm.save_schedule(schedule, schedule_path)
+        return JSONResponse({"entry": _serialize_entry(entry, entry.date)})
+
+    @app.post("/api/entries/move", response_class=JSONResponse)
+    def api_move_entries(
+        payload: MultiMovePayload,
+        _: str = Depends(require_user),
+        settings: AppConfig = Depends(get_config),
+    ) -> JSONResponse:
+        schedule_path = _resolve_schedule_path(settings)
+        schedule = sm.load_schedule(schedule_path)
+        entry_map: Dict[dt.date, sm.ScheduleEntry] = {}
+        for date_value in payload.source_dates:
+            entry = schedule.get_entry(date_value)
+            if not entry:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Entry missing for {date_value.isoformat()}")
+            entry_map[date_value] = entry
+
+        sorted_sources = sorted(entry_map)
+        earliest = sorted_sources[0]
+        delta = payload.target_date - earliest
+
+        target_map: Dict[dt.date, dt.date] = {}
+        for source_date in sorted_sources:
+            new_date = source_date + delta
+            target_map[source_date] = new_date
+            existing = schedule.get_entry(new_date)
+            if existing and existing.date not in entry_map:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Target date {new_date.isoformat()} already has an entry",
+                )
+
+        for source_date, entry in entry_map.items():
+            entry.date = target_map[source_date]
+
+        schedule.entries.sort(key=lambda item: item.date)
+        sm.save_schedule(schedule, schedule_path)
+        moved_payload = [_serialize_entry(entry, entry.date) for entry in entry_map.values()]
+        return JSONResponse({"entries": moved_payload})
 
     @app.post("/actions/{date}")
     def handle_action(
@@ -173,6 +371,54 @@ def _resolve_schedule_path(settings: AppConfig) -> Path:
     if settings.schedule_file:
         return settings.schedule_file
     return sm.get_schedule_path()
+
+
+def _serialize_entry(entry: Optional[sm.ScheduleEntry], date: dt.date) -> Dict[str, object]:
+    base = {
+        "date": date.isoformat(),
+        "weekday": date.strftime("%A"),
+        "weekday_short": date.strftime("%a"),
+        "weekday_index": date.weekday(),
+        "is_missing": entry is None,
+    }
+    if entry:
+        base.update(
+            {
+                "selector": entry.selector,
+                "status": entry.status,
+                "sent_at": entry.sent_at,
+                "notes": entry.notes or "",
+                "override": entry.override,
+            }
+        )
+    else:
+        base.update({"selector": None, "status": None, "sent_at": None, "notes": "", "override": None})
+    return base
+
+
+def _normalize_week_start(value: Optional[str]) -> dt.date:
+    if not value:
+        today = sm.taipei_today()
+        return today - dt.timedelta(days=today.weekday())
+    try:
+        parsed = dt.date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid start date") from exc
+    return parsed - dt.timedelta(days=parsed.weekday())
+
+
+def _ensure_week(schedule: sm.Schedule, start: dt.date, schedule_path: Path) -> dt.date:
+    end = start + dt.timedelta(days=6)
+    if sm.ensure_date_range(schedule, start, end):
+        sm.save_schedule(schedule, schedule_path)
+    return end
+
+
+def _get_month_end(year: int, month: int) -> dt.date:
+    """Get the last day of the specified month."""
+    if month == 12:
+        return dt.date(year, 12, 31)
+    return dt.date(year, month + 1, 1) - dt.timedelta(days=1)
 
 
 app = create_app()
