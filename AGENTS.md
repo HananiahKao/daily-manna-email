@@ -53,6 +53,18 @@ Notes to future maintainers (lessons learned)
   - Use the existing robust decoder in both `sjzl_daily_email.py` and `ezoe_week_scraper.py` to keep behavior consistent.
   - Schedule tooling: `schedule_tasks.py next-entry` (daily) and `schedule_tasks.py ensure-week --email` (Sunday) are the primary entrypoints.
 
+- PythonAnywhere shell access (API + curl)
+  - Export the API token locally (e.g., `export PA_TOKEN=...`). Never commit the secret—keep it in your shell session or a password manager.
+  - List consoles with `curl -s -H "Authorization: Token $PA_TOKEN" https://www.pythonanywhere.com/api/v0/user/dailymannabot/consoles/`. Each entry shows an `id`, `executable`, and whether it is running.
+  - Start a fresh bash console when needed:  
+    `curl -s -X POST -H "Authorization: Token $PA_TOKEN" -d "executable=/bin/bash" https://www.pythonanywhere.com/api/v0/user/dailymannabot/consoles/`
+  - Send commands via `send_input`:  
+    `curl -s -X POST -H "Authorization: Token $PA_TOKEN" -d "input=cd ~/daily-manna-email && ls\n" https://www.pythonanywhere.com/api/v0/user/dailymannabot/consoles/<id>/send_input/`  
+    (The trailing `\n` is required; wrap multi-step shells in `bash -lc '...'` just like on a normal terminal.)
+  - You can watch the same console live via the frame endpoint: `https://www.pythonanywhere.com/user/dailymannabot/consoles/<id>/frame/` (read-only unless you interact in the browser).
+  - Read output with `stdout`/`stderr` endpoints, e.g. `curl -s -H "Authorization: Token $PA_TOKEN" https://www.pythonanywhere.com/api/v0/user/dailymannabot/consoles/<id>/stdout/`. Poll until the buffer contains the command result.
+  - Keep all sensitive values (like `.env` contents) on the server—only transfer what’s necessary for troubleshooting.
+
 - Commit etiquette
   - Before proposing commits, read `/Users/hananiah/Developer/Commit_Message_Rules.md` (external to repo). Follow its format and get approval before committing.
 
