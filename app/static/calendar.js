@@ -29,6 +29,9 @@
       this.scrollEl = document.getElementById("calendar-scroll");
       this.flashContainer = document.getElementById("flash-messages");
       this.monthYearEl = document.getElementById("month-year");
+      this.batchToolbarEl = document.getElementById("batch-toolbar");
+      this.batchEditBtn = document.getElementById("batch-edit-btn");
+      this.selectionCountEl = document.getElementById("selection-count");
       this.popoverEl = document.getElementById("calendar-popover");
       this.popoverForm = document.getElementById("popover-form");
       this.popoverDateInput = document.getElementById("popover-date");
@@ -41,6 +44,12 @@
       this.dateAdjustOverlay = document.getElementById("date-adjust-overlay");
       this.dateAdjustForm = document.getElementById("date-adjust-form");
       this.dateAdjustInput = document.getElementById("date-adjust-input");
+      this.batchEditOverlay = document.getElementById("batch-edit-overlay");
+      this.batchEditForm = document.getElementById("batch-edit-form");
+      this.batchSelectorInput = document.getElementById("batch-selector");
+      this.batchStatusInput = document.getElementById("batch-status");
+      this.batchNotesInput = document.getElementById("batch-notes");
+      this.batchOverrideInput = document.getElementById("batch-override");
       this.selection = new Set();
       this.lastSelectedDate = null;
       this.dragOriginDate = null;
@@ -75,6 +84,7 @@
       this.bindToolbar();
       this.bindPopover();
       this.bindDateAdjustOverlay();
+      this.bindBatchEditOverlay();
       this.bindGlobalKeys();
       this.bindScrollBehavior();
       this.showInitialFlash();
@@ -100,6 +110,13 @@
       if (todayBtn) {
         todayBtn.addEventListener("click", () => {
           this.resetToMonth();
+        });
+      }
+
+      // Bind batch edit button
+      if (this.batchEditBtn) {
+        this.batchEditBtn.addEventListener("click", () => {
+          this.showBatchEditOverlay();
         });
       }
     }
@@ -196,11 +213,33 @@
       }
     }
 
+    bindBatchEditOverlay() {
+      const overlay = this.batchEditOverlay;
+      const form = this.batchEditForm;
+      if (!overlay || !form) {
+        return;
+      }
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        this.submitBatchEdit();
+      });
+
+      const cancelButtons = overlay.querySelectorAll('[data-action="cancel"]');
+      cancelButtons.forEach((btn) => {
+        btn.addEventListener("click", (event) => {
+          event.preventDefault();
+          this.hideBatchEditOverlay();
+        });
+      });
+    }
+
     bindGlobalKeys() {
       document.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
           this.closePopover();
           this.hideDateAdjustOverlay();
+          this.hideBatchEditOverlay();
           return;
         }
         if (
@@ -601,6 +640,17 @@
           note.textContent = entry.notes;
           body.appendChild(note);
         }
+
+        // Add stacking indicator for multi-selection
+        if (this.selection.size > 1 && this.selection.has(entry.date)) {
+          const stackIndicator = document.createElement("div");
+          stackIndicator.className = "event-stack-indicator";
+          stackIndicator.textContent = this.selection.size.toString();
+          body.appendChild(stackIndicator);
+
+          // Add staggered positioning class to show stack effect
+          chip.classList.add("stacked-chip");
+        }
       } else {
         const empty = document.createElement("p");
         empty.className = "day-empty";
@@ -718,6 +768,37 @@
           cell.classList.remove("is-selected");
         }
       });
+
+      // Update toolbar visibility for batch operations
+      if (this.batchToolbarEl && this.selectionCountEl) {
+        if (this.selection.size > 1) {
+          this.batchToolbarEl.hidden = false;
+          this.selectionCountEl.textContent = `${this.selection.size} selected`;
+        } else {
+          this.batchToolbarEl.hidden = true;
+        }
+      }
+
+      // Force rebuild of current month to update stacking indicators
+      if (this.currentYear && this.currentMonth) {
+        // Find current month section and rebuild its cells to update stacking indicators
+        const currentMonthKey = this.monthKey(this.currentYear, this.currentMonth);
+        const currentMonthSection = this.visibleMonths.find(m => m.key === currentMonthKey);
+        if (currentMonthSection) {
+          const grid = currentMonthSection.el.querySelector('.calendar-grid');
+          if (grid) {
+            // Rebuild all cells for this month
+            grid.innerHTML = '';
+            const monthEntries = this.monthEntries.get(currentMonthKey) || [];
+            monthEntries.forEach(dateKey => {
+              const entry = this.entriesIndex.get(dateKey);
+              if (entry) {
+                grid.appendChild(this.buildDayCell(entry));
+              }
+            });
+          }
+        }
+      }
     }
 
     handleDragStart(event, entry) {
@@ -913,6 +994,53 @@
     hideDateAdjustOverlay() {
       if (this.dateAdjustOverlay) {
         this.dateAdjustOverlay.hidden = true;
+      }
+    }
+
+    showBatchEditOverlay() {
+      if (!this.batchEditOverlay || !this.selection.size) {
+        return;
+      }
+      // Clear form
+      if (this.batchSelectorInput) this.batchSelectorInput.value = "";
+      if (this.batchStatusInput) this.batchStatusInput.value = "";
+      if (this.batchNotesInput) this.batchNotesInput.value = "";
+      if (this.batchOverrideInput) this.batchOverrideInput.value = "";
+      this.batchEditOverlay.hidden = false;
+    }
+
+    hideBatchEditOverlay() {
+      if (this.batchEditOverlay) {
+        this.batchEditOverlay.hidden = true;
+      }
+    }
+
+    async submitBatchEdit() {
+      if (!this.selection.size) {
+        return;
+      }
+
+      const selector = this.batchSelectorInput?.value.trim() || null;
+      const status = this.batchStatusInput?.value || null;
+      const notes = this.batchNotesInput?.value.trim() || null;
+      const override = this.batchOverrideInput?.value.trim() || null;
+
+      // Build entries array from selection
+      const entries = Array.from(this.selection).map(date => ({
+        date,
+        selector: selector || undefined,
+        status: status || undefined,
+        notes: notes || undefined,
+        override: override || undefined,
+      }));
+
+      try {
+        await this.jsonFetch("/api/entries/batch", { entries });
+        this.hideBatchEditOverlay();
+        this.showFlash("success", `Updated ${this.selection.size} entries.`);
+        await this.refreshFocusedMonth();
+      } catch (error) {
+        this.showFlash("error", error.message || "Unable to update entries");
       }
     }
 

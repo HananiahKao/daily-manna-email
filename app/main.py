@@ -74,6 +74,20 @@ class MultiMovePayload(BaseModel):
         return list(seen.keys())
 
 
+class BatchUpdatePayload(BaseModel):
+    entries: List[EntryPayload]
+
+    @validator("entries")
+    def _ensure_entries(cls, value: List[EntryPayload]) -> List[EntryPayload]:
+        if not value:
+            raise ValueError("entries cannot be empty")
+        # Ensure dates are unique
+        seen: Dict[dt.date, None] = {}
+        for entry in value:
+            seen.setdefault(entry.date, None)
+        return value
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Daily Manna Dashboard")
 
@@ -265,6 +279,53 @@ def create_app() -> FastAPI:
         sm.save_schedule(schedule, schedule_path)
         moved_payload = [_serialize_entry(entry, entry.date) for entry in entry_map.values()]
         return JSONResponse({"entries": moved_payload})
+
+    @app.post("/api/entries/batch", response_class=JSONResponse)
+    def api_batch_update_entries(
+        payload: BatchUpdatePayload,
+        _: str = Depends(require_user),
+        settings: AppConfig = Depends(get_config),
+    ) -> JSONResponse:
+        schedule_path = _resolve_schedule_path(settings)
+        schedule = sm.load_schedule(schedule_path)
+
+        updated_entries = []
+        for entry_payload in payload.entries:
+            entry = schedule.get_entry(entry_payload.date)
+            created = False
+
+            # Create entry if it doesn't exist and we have a selector
+            if not entry:
+                if not entry_payload.selector:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Selector required for new entry on {entry_payload.date.isoformat()}"
+                    )
+                entry = sm.ScheduleEntry(date=entry_payload.date, selector=entry_payload.selector)
+                schedule.upsert_entry(entry)
+                created = True
+
+            # Update fields (only modify non-None values)
+            if entry_payload.selector is not None:
+                entry.selector = entry_payload.selector
+            if entry_payload.status is not None:
+                entry.status = entry_payload.status
+                if entry_payload.status == "sent":
+                    entry.sent_at = dt.datetime.now(tz=sm.TAIWAN_TZ).isoformat()
+                else:
+                    entry.sent_at = None
+            if entry_payload.notes is not None:
+                entry.notes = entry_payload.notes
+            if entry_payload.override is not None:
+                entry.override = entry_payload.override.strip() or None
+
+            updated_entries.append({
+                "entry": _serialize_entry(entry, entry.date),
+                "created": created
+            })
+
+        sm.save_schedule(schedule, schedule_path)
+        return JSONResponse({"entries": updated_entries})
 
     @app.post("/actions/{date}")
     def handle_action(

@@ -121,6 +121,39 @@ body {
   transform: scale(0.98);
 }
 
+.calendar-toolbar-batch {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-left: auto;
+}
+
+.calendar-toolbar-batch button {
+  background: #4f46e5;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.3);
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.calendar-toolbar-batch button:hover {
+  background: #4338ca;
+}
+
+.calendar-toolbar-batch button:active {
+  transform: scale(0.98);
+}
+
+#selection-count {
+  font-weight: 500;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
 .calendar-scroll {
   flex: 1;
   min-height: 0;
@@ -268,6 +301,30 @@ body {
   color: #4b5563;
 }
 
+.event-stack-indicator {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: bold;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.stacked-chip {
+  position: relative;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
 .day-empty {
   margin: 0;
   color: #9ca3af;
@@ -387,6 +444,63 @@ body {
   border-radius: 16px;
   box-shadow: 0 10px 40px rgba(15, 23, 42, 0.3);
   min-width: 320px;
+}
+
+.calendar-edit-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.calendar-edit-overlay[hidden] {
+  display: none;
+}
+
+.calendar-edit-card {
+  background: #ffffff;
+  padding: 1.5rem;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(15, 23, 42, 0.3);
+  min-width: 400px;
+  max-width: 500px;
+}
+
+.batch-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.batch-edit-field label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.batch-edit-field input,
+.batch-edit-field textarea,
+.batch-edit-field select {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.5rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+.batch-edit-field textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.batch-edit-field small {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
 }
 
 .calendar-move-card p {
