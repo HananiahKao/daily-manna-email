@@ -1020,15 +1020,27 @@
         return;
       }
 
-      const selector = this.batchSelectorInput?.value.trim() || null;
+      const selectorInput = this.batchSelectorInput?.value.trim() || "";
+      const selectors = this.parseSelectorInput(selectorInput);
+
+      // Validate selector count matches date count (unless empty or single selector)
+      if (selectorInput && selectors.length > 1 && selectors.length !== this.selection.size) {
+        this.showFlash("error", `Selector count (${selectors.length}) must match selected dates count (${this.selection.size}), or use 1 selector to apply to all.`);
+        this.batchSelectorInput.focus();
+        return;
+      }
+
       const status = this.batchStatusInput?.value || null;
       const notes = this.batchNotesInput?.value.trim() || null;
       const override = this.batchOverrideInput?.value.trim() || null;
 
+      // Sort selected dates chronologically
+      const sortedDates = Array.from(this.selection).sort();
+
       // Build entries array from selection
-      const entries = Array.from(this.selection).map(date => ({
+      const entries = sortedDates.map((date, index) => ({
         date,
-        selector: selector || undefined,
+        selector: selectors[index % selectors.length] || undefined,
         status: status || undefined,
         notes: notes || undefined,
         override: override || undefined,
@@ -1042,6 +1054,54 @@
       } catch (error) {
         this.showFlash("error", error.message || "Unable to update entries");
       }
+    }
+
+    parseSelectorInput(input) {
+      if (!input) {
+        return [];
+      }
+
+      // Check for range syntax: "start to end"
+      const rangeMatch = input.match(/^(.+?)\s+to\s+(.+)$/);
+      if (rangeMatch) {
+        const start = rangeMatch[1].trim();
+        const end = rangeMatch[2].trim();
+        return this.generateRangeSelectors(start, end);
+      }
+
+      // Otherwise, split by comma and also consider newlines
+      const selectors = input.split(/[,\n]+/).map(s => s.trim()).filter(s => s.length > 0);
+      return selectors;
+    }
+
+    generateRangeSelectors(start, end) {
+      // Parse selectors like "2-1-15" to "2-1-19"
+      const startParts = start.split('-').map((part, index) => index < 2 ? part : parseInt(part, 10));
+      const endParts = end.split('-').map((part, index) => index < 2 ? part : parseInt(part, 10));
+
+      if (startParts.length !== 3 || endParts.length !== 3 ||
+          startParts[0] !== endParts[0] || startParts[1] !== endParts[1]) {
+        // If parts don't match or non-numeric last part, just return start and end
+        return [start, end];
+      }
+
+      const startNum = startParts[2];
+      const endNum = endParts[2];
+
+      if (isNaN(startNum) || isNaN(endNum)) {
+        return [start, end];
+      }
+
+      if (startNum >= endNum) {
+        return [start, end];
+      }
+
+      // Generate the range
+      const selectors = [];
+      for (let i = startNum; i <= endNum; i++) {
+        selectors.push(`${startParts[0]}-${startParts[1]}-${i}`);
+      }
+      return selectors;
     }
 
     updateMonthYearLabel() {
