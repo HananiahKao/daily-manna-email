@@ -493,20 +493,21 @@ def run_once() -> int:
       - Selector HTML mode (EZOE_SELECTOR set): fetch ezoe.work lesson day HTML and send rich HTML with plain-text fallback.
     """
     today = dt.datetime.now().strftime("%Y-%m-%d")
+    abs_url = None  # Initialize for footer generation
     # If selector mode is enabled, use ezoe scraper
     if EZOe_SELECTOR:
         try:
-            from ezoe_week_scraper import get_day_html  # local module
-        except Exception as imp_exc:
-            logger.error("Failed to import ezoe_week_scraper: %s", imp_exc)
-            return 1
-
-        try:
-            html_day = get_day_html(EZOe_SELECTOR, base=EZOe_BASE)
+            import content_source_factory
+            active_source = content_source_factory.get_active_source()
+            selector_value = EZOe_SELECTOR  # Store in local scope
+            content_block = active_source.get_daily_content(selector_value)
+            html_day = content_block.html_content
+            title = content_block.title
+            plain_text_fallback = content_block.plain_text_content
         except Exception as e:
             # Fail the run so stateful script can advance selector; surface suggestion.
             msg = str(e)
-            logger.error("Ezoe selector failed for %s: %s", EZOe_SELECTOR, msg)
+            logger.error("Content source failed for %s: %s", EZOe_SELECTOR, msg)
             if "Try:" in msg or "Try selector:" in msg:
                 logger.error("Suggested next selector: %s", msg)
             return 2
@@ -548,12 +549,18 @@ def run_once() -> int:
                 logger.info("DEBUG failed to write raw ezOE day html: %s", _e)
 
         # Build subject and plain-text fallback derived from same HTML; also provide source URL hint
-        # Derive source URL based on selector
-        try:
-            vol, les, day = EZOe_SELECTOR.split("-")
-            source_url = f"{EZOe_BASE.rstrip('/')}/2264-{int(vol)}-{int(les)}.html"
-        except Exception:
-            source_url = EZOe_BASE
+        # Derive source URL based on content source
+        source_name = active_source.get_source_name()
+        if source_name == "wix":
+            source_url = "https://churchintamsui.wixsite.com/index/morning-revival"
+        elif source_name == "ezoe":
+            try:
+                vol, les, day = EZOe_SELECTOR.split("-")
+                source_url = f"{EZOe_BASE.rstrip('/')}/2264-{int(vol)}-{int(les)}.html"
+            except Exception:
+                source_url = EZOe_BASE
+        else:
+            source_url = "https://example.com"  # fallback
 
         # Extract a simple title from HTML
         try:
@@ -584,7 +591,7 @@ def run_once() -> int:
         except Exception:
             preview = "(純文字預覽不可用；請查看 HTML 內容)"
         _debug_preview("EZOE_TEXT_PREVIEW", preview)
-        body = f"來源: {source_url}\n日期: {today}\n\n{preview}"
+        body = f"來源: {source_url}\n日期: {today}\n\n{plain_text_fallback or preview}"
         _debug_preview("EZOE_BODY", body)
         # Inline CSS from the original lesson page so Gmail renders without external links
         # Use a fixed, Gmail-safe custom stylesheet (scoped under .email-body)
@@ -614,14 +621,8 @@ def run_once() -> int:
         )
         html_with_css = _wrap_email_html_with_css(html_day, CUSTOM_CSS)
         # Append original link footer inside the email body
-        # Build canonical ezoe.work URL, anchored to correct day section when possible.
-        try:
-            base_url = _ezoe_lesson_url(EZOe_SELECTOR, EZOe_BASE)
-            # Prefer detecting the actual anchor id from the live page, fallback to static mapping
-            anchor_id = _ezoe_detect_anchor_id(EZOe_SELECTOR, EZOe_BASE) or _ezoe_day_anchor(EZOe_SELECTOR)
-            abs_url = base_url + (f"#{anchor_id}" if anchor_id else "")
-        except Exception:
-            abs_url = source_url
+        # Use the content source's URL generation logic
+        abs_url = active_source.get_content_url(selector_value)
         footer = (
             "<hr><p style=\"margin-top:12px;\">原文連結："
             f"<a href=\"{abs_url}\" target=\"_blank\" rel=\"noopener noreferrer\">{abs_url}</a>"

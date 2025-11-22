@@ -182,13 +182,23 @@ def _handle_next_entry(args: argparse.Namespace) -> int:
         print(json.dumps(payload, ensure_ascii=False))
         return 0
 
+    # Adapt selector to active content source if needed
+    selector = entry.selector
+    content_source = os.getenv("CONTENT_SOURCE", "ezoe").lower()
+    if content_source == "wix":
+        # Convert entry.date to Chinese weekday selector
+        weekday = entry.date.weekday()  # 0=Monday, 7=Sunday
+        chinese_weekday_map = ["週一", "週二", "週三", "週四", "週五", "週六", "主日"]
+        selector = f"【{chinese_weekday_map[weekday]}】"
+
     payload = {
         "date": entry.date.isoformat(),
         "weekday": sm.WEEKDAY_TW[entry.date.weekday()],
-        "selector": entry.selector,
+        "selector": selector,
         "schedule_file": str(schedule_path),
         "status": entry.status,
         "resend": entry.status == "sent",
+        "content_source": content_source,
     }
     print(json.dumps(payload, ensure_ascii=False))
     return 0

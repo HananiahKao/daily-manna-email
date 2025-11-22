@@ -1,10 +1,17 @@
 Daily Manna Email
 
 - Original link behavior (ezoe selector mode):
-  - The email footer includes “原文連結” pointing to the canonical page on ezoe.work.
+  - The email footer includes "原文連結" pointing to the canonical page on ezoe.work.
   - It deep-links to the day section using anchors `#1_6`..`#1_12` mapping 周一..主日.
   - Example: selector `2-1-3` → `https://ezoe.work/books/2/2264-2-1.html#1_8` (周三).
   - If parsing fails, falls back to the non-anchored URL.
+
+### Content Source Switching (OCP-Compliant Architecture)
+
+- Supports multiple content sources while maintaining backward compatibility.
+- Set `CONTENT_SOURCE=ezoe` (default) for existing ezoe.work content, or `CONTENT_SOURCE=wix` for Wix site "Morning Revival".
+- The system uses an abstraction layer (`content_source.py`) with factory pattern for easy extension to new sources.
+- When `CONTENT_SOURCE=wix`, the selector becomes Chinese weekday (e.g., `【週三】`) instead of volume-lesson-day triplet.
 
 ## Schedule-driven workflow
 
