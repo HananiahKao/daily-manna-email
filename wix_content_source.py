@@ -7,6 +7,7 @@ Fetches content from churchintamsui.wixsite.com/index/morning-revival.
 
 import requests
 from bs4 import BeautifulSoup
+import re
 import content_source
 ContentSource = content_source.ContentSource
 ContentBlock = content_source.ContentBlock
@@ -26,7 +27,11 @@ WEEKDAY_LABELS = {
     "【主日】": 7,
 }
 
-# Combined markers for sections spanning multiple days
+# Regex pattern to match lower section markers like "第五週■週一", "第五週■週二", etc.
+# The week number uses Chinese numerals (一二三四五六七八九十), so we match any characters
+LOWER_SECTION_PATTERN = re.compile(r'第.+?週■(週[一二三四五六日]|主日)')
+
+# Combined markers for sections spanning multiple days (for backward compatibility)
 SECTION_MARKERS = list(WEEKDAY_LABELS.keys()) + ["【週四、週五】"]
 
 
@@ -88,13 +93,13 @@ class WixContentSource(ContentSource):
 
     def _find_main_content(self, soup: BeautifulSoup):
         """Locate the main content container on the Wix page based on actual structure."""
-        # Based on browser inspection, look for the main content area with "晨興聖言" (Morning Revival)
-        # First try to find sections containing the weekday markers
-        weekday_markers = ["【週一】", "【週二】", "【週三】", "【週四】", "【週五】", "【週六】", "【主日】"]
-
-        # Look for content that contains these markers
+        # Based on browser inspection, we want the LOWER section with "晨興餧養" and "信息選讀"
+        # Look for content indicators from the lower section
+        lower_section_indicators = ["晨興餧養", "信息選讀"]
+        
+        # Look for content that contains the lower section pattern (第X週■週Y)
         best_candidate = None
-        max_markers = 0
+        max_score = 0
 
         # Try main containers first
         candidates = [
@@ -103,37 +108,34 @@ class WixContentSource(ContentSource):
             soup.find("article"),
             soup.select_one("div.main-content"),
             soup.select_one("div[data-testid='article-content']"),
+            soup.find("body"),  # Fallback to body
         ]
 
         for candidate in candidates:
             if candidate:
                 text_content = candidate.get_text()
-                marker_count = sum(1 for marker in weekday_markers if marker in text_content)
-                if marker_count > max_markers:
-                    max_markers = marker_count
+                # Score based on lower section indicators and pattern matches
+                indicator_count = sum(1 for indicator in lower_section_indicators if indicator in text_content)
+                pattern_matches = len(LOWER_SECTION_PATTERN.findall(text_content))
+                score = indicator_count * 10 + pattern_matches
+                
+                if score > max_score:
+                    max_score = score
                     best_candidate = candidate
 
-        # If we found a container with markers, use it
-        if best_candidate:
+        # If we found a container with lower section content, use it
+        if best_candidate and max_score > 0:
             return best_candidate
-
-        # Fallback: search the entire body for content with markers
-        body = soup.find("body")
-        if body:
-            text_content = body.get_text()
-            has_markers = any(marker in text_content for marker in weekday_markers)
-            if has_markers:
-                return body
 
         # Final fallback
         return soup.find("body") or soup
 
     def _segment_by_weekdays(self, content) -> dict:
-        """Split content into segments based on 【週X】 headings."""
+        """Split content into segments based on lower section markers (第X週■週Y)."""
         segments = {}
 
         # Find all paragraph elements in the content
-        all_paragraphs = content.find_all(['p', 'h2', 'h3'])
+        all_paragraphs = content.find_all(['p', 'h2', 'h3', 'h4', 'div'])
 
         current_selector = None
         current_segments = []
@@ -141,14 +143,18 @@ class WixContentSource(ContentSource):
         for p in all_paragraphs:
             text = p.get_text(strip=True)
 
-            # Check if this paragraph starts a new weekday section
-            found_marker = None
-            for marker in SECTION_MARKERS:
-                if marker in text or text.startswith(marker):
-                    found_marker = marker
-                    break
-
-            if found_marker:
+            # Check if this paragraph starts a new weekday section using the lower section pattern
+            match = LOWER_SECTION_PATTERN.search(text)
+            
+            if match:
+                # Extract the weekday part (週一, 週二, etc. or 主日)
+                weekday = match.group(1)
+                # Convert to the selector format expected by caller: 【週一】, 【週二】, etc.
+                if weekday == "主日":
+                    found_marker = "【主日】"
+                else:
+                    found_marker = f"【{weekday}】"
+                
                 # Save previous segment in dictionary
                 if current_selector and current_segments:
                     # Combine all paragraphs in this segment
