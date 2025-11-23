@@ -40,3 +40,8 @@ class ContentSource(ABC):
     def get_content_url(self, selector: str) -> str:
         """Returns the canonical URL for the given selector, with appropriate anchoring when available."""
         pass
+
+    @abstractmethod
+    def get_email_subject(self, selector: str, content_title: str) -> str:
+        """Returns the email subject for the given selector and content title."""
+        pass

@@ -77,17 +77,32 @@ class WixContentSource(ContentSource):
             for tag in soup_content.select(sel):
                 tag.decompose()
 
-        # Extract title (use weekday as title, or find h1/h2 if present)
-        title = selector.strip("【】")  # e.g., "週一"
-        title_tag = soup_content.find(["h1", "h2", "h3"])
-        if title_tag and title_tag.get_text(strip=True):
-            title = title_tag.get_text(strip=True)
+        # Extract title - look for meaningful content title
+        title = selector.strip("【】")  # Default to weekday e.g., "週一"
+        
+        # Try to find a better title from the content
+        # Look for bold text or headings that might be the section title
+        for tag in soup_content.find_all(["strong", "b", "span"]):
+            text = tag.get_text(strip=True)
+            # Look for common section titles
+            if text and len(text) < 20 and any(keyword in text for keyword in ["晨興", "信息", "餧養", "選讀", "禱告"]):
+                title = text
+                break
+        
+        # If no meaningful title found, try h1/h2/h3 (but not if it's just the weekday)
+        if title == selector.strip("【】"):
+            title_tag = soup_content.find(["h1", "h2", "h3"])
+            if title_tag:
+                tag_text = title_tag.get_text(strip=True)
+                if tag_text and tag_text != selector.strip("【】"):
+                    title = tag_text
 
         # Generate plain text
         plain_text_content = self._extract_plain_text(soup_content)
 
-        # Wrap content with weekday header
-        html_content = f"<h3>{title}</h3>{str(soup_content)}"
+        # Wrap content with weekday header (use weekday for the header, not the extracted title)
+        weekday_label = selector.strip("【】")
+        html_content = f"<h3>{weekday_label}</h3>{str(soup_content)}"
 
         return ContentBlock(html_content, plain_text_content, title)
 
@@ -211,3 +226,11 @@ class WixContentSource(ContentSource):
     def get_content_url(self, selector: str) -> str:
         """Return Wix base URL (no anchoring since Wix uses single-page design)."""
         return WIX_URL
+
+    def get_email_subject(self, selector: str, content_title: str) -> str:
+        """Return email subject for Wix content source with weekday only.
+        The content title is constant (晨興餧養) and should not appear in the subject.
+        """
+        # Extract weekday from selector (format: 【週一】, 【週二】, etc.)
+        weekday = selector.strip("【】")  # e.g., "週一", "主日"
+        return f"晨興聖言 | {weekday}"

@@ -69,6 +69,42 @@ class EzoeContentSource(ContentSource):
         anchor_id = self._ezoe_detect_anchor_id(selector, self.base_url) or self._ezoe_day_anchor(selector)
         return base_url + (f"#{anchor_id}" if anchor_id else "")
 
+    def get_email_subject(self, selector: str, content_title: str) -> str:
+        """Return email subject for Ezoe content source with weekday and content title.
+        Handles Simplified‑Chinese weekday prefixes by converting them to Traditional
+        before deduplication.
+        """
+        # Map day number to Traditional Chinese weekday
+        day_map = {
+            1: "週一",
+            2: "週二",
+            3: "週三",
+            4: "週四",
+            5: "週五",
+            6: "週六",
+            7: "主日",
+        }
+
+        # Extract weekday from selector (format: "volume-lesson-day")
+        try:
+            parts = selector.split("-")
+            day_num = int(parts[2])
+            weekday = day_map.get(day_num, "週一")
+        except (ValueError, IndexError):
+            weekday = "週一"
+
+        # ---- NEW: Normalise title ----
+        # Convert any Simplified Chinese weekday prefix (周) to Traditional (週)
+        cleaned_content = content_title.strip().replace("周", "週")
+
+        # If the title already starts with the weekday, keep it as‑is
+        if cleaned_content.startswith(weekday):
+            final_title = cleaned_content
+        else:
+            final_title = f"{weekday} {cleaned_content}" if cleaned_content else weekday
+
+        return f"聖經之旅 | {final_title}"
+
     def _ezoe_lesson_url(self, selector: str, base: str) -> str:
         """Build lesson URL like https://ezoe.work/books/2/2264-<volume>-<lesson>.html from selector 'v-l-d'."""
         import re as _re

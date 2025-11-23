@@ -548,8 +548,17 @@ def run_once() -> int:
             except Exception as _e:
                 logger.info("DEBUG failed to write raw ezOE day html: %s", _e)
 
+
         # Build subject and plain-text fallback derived from same HTML; also provide source URL hint
-        # Derive source URL based on content source
+        # Get the email subject from the content source
+        email_subject = active_source.get_email_subject(selector_value, title)
+
+        subject = f"{email_subject} | {today}"
+        # Ensure subject is zh-TW as well
+        subject = _maybe_convert_zh_cn_to_zh_tw(subject)
+        logger.info("Email subject: %s", subject)
+        
+        # Derive source URL based on content source for the email body
         source_name = active_source.get_source_name()
         if source_name == "wix":
             source_url = "https://churchintamsui.wixsite.com/index/morning-revival"
@@ -561,19 +570,6 @@ def run_once() -> int:
                 source_url = EZOe_BASE
         else:
             source_url = "https://example.com"  # fallback
-
-        # Extract a simple title from HTML
-        try:
-            from bs4 import BeautifulSoup as _BS
-            _s = _BS(html_day, "html.parser")
-            title_tag = _s.find(["h1", "h2", "h3"]) or _s.find("title")
-            title = title_tag.get_text(strip=True) if title_tag else "聖經之旅 每日內容"
-        except Exception:
-            title = "聖經之旅 每日內容"
-
-        subject = f"聖經之旅 | {title} | {today}"
-        # Ensure subject is zh-TW as well
-        subject = _maybe_convert_zh_cn_to_zh_tw(subject)
         try:
             from bs4 import BeautifulSoup as _BS
             _s2 = _BS(html_day, "html.parser")
