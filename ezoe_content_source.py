@@ -105,6 +105,63 @@ class EzoeContentSource(ContentSource):
 
         return f"聖經之旅 | {final_title}"
 
+    def parse_selector(self, selector: str) -> tuple[int, int, int]:
+        parts = selector.strip().split("-")
+        if len(parts) != 3:
+            raise ValueError(f"invalid selector: {selector}")
+        volume, lesson, day = (int(parts[0]), int(parts[1]), int(parts[2]))
+        if not (1 <= day <= 7):
+            raise ValueError("selector day must be 1..7")
+        if volume <= 0 or lesson <= 0:
+            raise ValueError("selector components must be positive")
+        return volume, lesson, day
+
+    def format_selector(self, parsed: tuple[int, int, int]) -> str:
+        volume, lesson, day = parsed
+        if not (1 <= day <= 7):
+            raise ValueError("day must be 1..7")
+        if volume <= 0 or lesson <= 0:
+            raise ValueError("volume and lesson must be positive")
+        return f"{volume}-{lesson}-{day}"
+
+    def advance_selector(self, selector: str) -> str:
+        volume, lesson, day = self.parse_selector(selector)
+        day += 1
+        if day > 7:
+            day = 1
+            lesson += 1
+        return self.format_selector((volume, lesson, day))
+
+    def previous_selector(self, selector: str) -> str:
+        volume, lesson, day = self.parse_selector(selector)
+        day -= 1
+        if day < 1:
+            day = 7
+            lesson = max(1, lesson - 1)
+        return self.format_selector((volume, lesson, day))
+
+    def validate_selector(self, selector: str) -> bool:
+        try:
+            self.parse_selector(selector)
+            return True
+        except ValueError:
+            return False
+
+    def get_default_selector(self) -> str:
+        # Prioritize the full selector if provided (legacy support)
+        selector = os.environ.get("EZOE_SELECTOR")
+        if selector:
+            try:
+                self.parse_selector(selector)
+                return selector
+            except ValueError:
+                pass  # Fallback if invalid
+
+        volume = int(os.environ.get("EZOE_VOLUME", "2"))
+        lesson = int(os.environ.get("EZOE_LESSON", "1"))
+        day = int(os.environ.get("EZOE_DAY_START", "1"))
+        return self.format_selector((volume, lesson, day))
+
     def _ezoe_lesson_url(self, selector: str, base: str) -> str:
         """Build lesson URL like https://ezoe.work/books/2/2264-<volume>-<lesson>.html from selector 'v-l-d'."""
         import re as _re
@@ -154,3 +211,30 @@ class EzoeContentSource(ContentSource):
         except Exception:
             # Any failure here should not break the job; we will fallback later
             return None
+
+    def get_max_lesson(self, volume: int) -> int:
+        """
+        Return the maximum valid lesson number for the given volume.
+        Returns 0 if no lessons found or error.
+        """
+        try:
+            # Lazy import to avoid circular dependency if any
+            import ezoe_week_scraper as ez
+            lessons = ez.get_volume_lessons(volume, base=self.base_url)
+            return max(lessons) if lessons else 0
+        except Exception:
+            return 0
+
+    def validate_lesson_exists(self, volume: int, lesson: int) -> bool:
+        """Check if a specific lesson exists and is valid (not a map/manual)."""
+        try:
+            import ezoe_week_scraper as ez
+            lessons = ez.get_volume_lessons(volume, base=self.base_url)
+            return lesson in lessons
+        except Exception:
+            # Fail open or closed? 
+            # If we can't check, maybe assume valid to avoid blocking?
+            # But the goal is to block invalid ones.
+            # Let's assume False if we can't verify, but log it?
+            # For now, return False to be safe against garbage.
+            return False

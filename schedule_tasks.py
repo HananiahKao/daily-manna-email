@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Sequence
 import schedule_manager as sm
 import schedule_reply as sr
 import schedule_reply_processor as srp
+from content_source_factory import get_content_source
 
 try:
     import sjzl_daily_email as sjzl
@@ -160,7 +161,11 @@ def _handle_next_entry(args: argparse.Namespace) -> int:
     today = sm.taipei_today()
     target_date = sm.parse_date_descriptor(descriptor, today=today) if descriptor else today
 
-    changed = sm.ensure_date_range(schedule, target_date, target_date)
+    # Get content source for scheduling operations
+    source_name = os.getenv("CONTENT_SOURCE", "ezoe").lower()
+    content_source = get_content_source(source_name)
+
+    changed = sm.ensure_date_range(schedule, content_source, target_date, target_date)
     if changed:
         sm.save_schedule(schedule, schedule_path)
 
@@ -184,12 +189,8 @@ def _handle_next_entry(args: argparse.Namespace) -> int:
 
     # Adapt selector to active content source if needed
     selector = entry.selector
-    content_source = os.getenv("CONTENT_SOURCE", "ezoe").lower()
-    if content_source == "wix":
-        # Convert entry.date to Chinese weekday selector
-        weekday = entry.date.weekday()  # 0=Monday, 7=Sunday
-        chinese_weekday_map = ["週一", "週二", "週三", "週四", "週五", "週六", "主日"]
-        selector = f"【{chinese_weekday_map[weekday]}】"
+    # No longer needed to manually adapt selector as it's handled by the source logic now
+    # but we keep the variable for the payload
 
     payload = {
         "date": entry.date.isoformat(),
@@ -198,7 +199,8 @@ def _handle_next_entry(args: argparse.Namespace) -> int:
         "schedule_file": str(schedule_path),
         "status": entry.status,
         "resend": entry.status == "sent",
-        "content_source": content_source,
+        "resend": entry.status == "sent",
+        "content_source": source_name,
     }
     print(json.dumps(payload, ensure_ascii=False))
     return 0
@@ -233,7 +235,11 @@ def _handle_ensure_week(args: argparse.Namespace) -> int:
         start = _next_monday(today)
     end = start + dt.timedelta(days=6)
 
-    changed = sm.ensure_date_range(schedule, start, end)
+    # Get content source for scheduling operations
+    source_name = os.getenv("CONTENT_SOURCE", "ezoe").lower()
+    content_source = get_content_source(source_name)
+
+    changed = sm.ensure_date_range(schedule, content_source, start, end)
 
     entries = [entry for entry in _entries_for_range(schedule, start, end) if entry]
 

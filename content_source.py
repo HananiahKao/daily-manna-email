@@ -45,3 +45,33 @@ class ContentSource(ABC):
     def get_email_subject(self, selector: str, content_title: str) -> str:
         """Returns the email subject for the given selector and content title."""
         pass
+
+    @abstractmethod
+    def parse_selector(self, selector: str) -> any:
+        """Parses a selector string into a structured object (tuple, dict, etc.)."""
+        pass
+
+    @abstractmethod
+    def format_selector(self, parsed: any) -> str:
+        """Formats a structured selector object back into a string."""
+        pass
+
+    @abstractmethod
+    def advance_selector(self, selector: str) -> str:
+        """Returns the next selector in the sequence."""
+        pass
+
+    @abstractmethod
+    def previous_selector(self, selector: str) -> str:
+        """Returns the previous selector in the sequence."""
+        pass
+
+    @abstractmethod
+    def validate_selector(self, selector: str) -> bool:
+        """Validates if the selector string is well-formed."""
+        pass
+
+    @abstractmethod
+    def get_default_selector(self) -> str:
+        """Returns a default starting selector for this source."""
+        pass

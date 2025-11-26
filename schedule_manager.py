@@ -13,7 +13,8 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
+from content_source import ContentSource
 
 try:  # Python 3.9+
     from zoneinfo import ZoneInfo
@@ -186,7 +187,11 @@ def get_schedule_path() -> Path:
     base = os.environ.get("SCHEDULE_FILE")
     if base:
         return Path(base).expanduser().resolve()
-    return (Path(os.getcwd()) / DEFAULT_SCHEDULE_FILENAME).resolve()
+    
+    # Derive filename from content source
+    source_name = os.getenv("CONTENT_SOURCE", "ezoe").lower()
+    filename = f"state/{source_name}_schedule.json"
+    return (Path(os.getcwd()) / filename).resolve()
 
 
 def load_schedule(path: Optional[Path] = None) -> Schedule:
@@ -213,59 +218,21 @@ def save_schedule(schedule: Schedule, path: Optional[Path] = None) -> None:
     path.write_text(payload + "\n", encoding="utf-8")
 
 
-def parse_selector(selector: str) -> Tuple[int, int, int]:
-    parts = selector.strip().split("-")
-    if len(parts) != 3:
-        raise ValueError(f"invalid selector: {selector}")
-    volume, lesson, day = (int(parts[0]), int(parts[1]), int(parts[2]))
-    if not (1 <= day <= 7):
-        raise ValueError("selector day must be 1..7")
-    if volume <= 0 or lesson <= 0:
-        raise ValueError("selector components must be positive")
-    return volume, lesson, day
 
 
-def format_selector(volume: int, lesson: int, day: int) -> str:
-    if not (1 <= day <= 7):
-        raise ValueError("day must be 1..7")
-    if volume <= 0 or lesson <= 0:
-        raise ValueError("volume and lesson must be positive")
-    return f"{volume}-{lesson}-{day}"
-
-
-def advance_selector(selector: str) -> str:
-    volume, lesson, day = parse_selector(selector)
-    day += 1
-    if day > 7:
-        day = 1
-        lesson += 1
-    return format_selector(volume, lesson, day)
-
-
-def previous_selector(selector: str) -> str:
-    volume, lesson, day = parse_selector(selector)
-    day -= 1
-    if day < 1:
-        day = 7
-        lesson = max(1, lesson - 1)
-    return format_selector(volume, lesson, day)
-
-
-def determine_seed_selector(schedule: Schedule, default: Optional[str] = None) -> str:
+def determine_seed_selector(schedule: Schedule, source: ContentSource, default: Optional[str] = None) -> str:
     if schedule.entries:
         last_selector = schedule.entries[-1].selector
-        return advance_selector(last_selector)
+        return source.advance_selector(last_selector)
     if default:
-        parse_selector(default)
+        source.parse_selector(default)
         return default
-    volume = int(os.environ.get("EZOE_VOLUME", "2"))
-    lesson = int(os.environ.get("EZOE_LESSON", "1"))
-    day = int(os.environ.get("EZOE_DAY_START", "1"))
-    return format_selector(volume, lesson, day)
+    return source.get_default_selector()
 
 
 def ensure_date_range(
     schedule: Schedule,
+    source: ContentSource,
     start_date: dt.date,
     end_date: dt.date,
     seed_selector: Optional[str] = None,
@@ -279,7 +246,7 @@ def ensure_date_range(
         raise ValueError("end_date must not be before start_date")
 
     new_entries_added = False
-    seed = seed_selector or determine_seed_selector(schedule)
+    seed = seed_selector or determine_seed_selector(schedule, source)
 
     pointer_entry = schedule.latest_before(start_date)
     cursor_selector = pointer_entry.selector if pointer_entry else None
@@ -293,7 +260,27 @@ def ensure_date_range(
         if cursor_selector is None:
             cursor_selector = seed
         else:
-            cursor_selector = advance_selector(cursor_selector)
+            cursor_selector = source.advance_selector(cursor_selector)
+            
+            # --- Validation Logic ---
+            if hasattr(source, "validate_lesson_exists") and hasattr(source, "parse_selector") and hasattr(source, "format_selector"):
+                try:
+                    vol, les, day = source.parse_selector(cursor_selector)
+                    # Only validate when we start a new lesson (day 1)
+                    if day == 1:
+                        is_valid = source.validate_lesson_exists(vol, les)
+                        if not is_valid:
+                            # If invalid, roll over to the next volume
+                            new_vol = vol + 1
+                            new_les = 1
+                            new_day = 1
+                            candidate = source.format_selector((new_vol, new_les, new_day))
+                            print(f"DEBUG: Lesson {vol}-{les} invalid, rolling over to {candidate}")
+                            cursor_selector = candidate
+                except Exception as e:
+                    print(f"WARNING: Validation failed for {cursor_selector}: {e}")
+            # ------------------------
+
         entry = ScheduleEntry(date=date, selector=cursor_selector)
         schedule.upsert_entry(entry)
         new_entries_added = True
@@ -362,17 +349,5 @@ def resolve_weekday_override(value: str, today: Optional[dt.date] = None) -> dt.
 __all__ = [
     "Schedule",
     "ScheduleEntry",
-    "advance_selector",
-    "determine_seed_selector",
-    "ensure_date_range",
-    "format_selector",
-    "get_schedule_path",
-    "load_schedule",
-    "mark_sent",
-    "next_for_date",
-    "parse_date_descriptor",
-    "parse_selector",
-    "resolve_weekday_override",
-    "save_schedule",
     "taipei_today",
 ]

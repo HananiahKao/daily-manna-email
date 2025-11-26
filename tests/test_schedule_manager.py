@@ -3,6 +3,7 @@ import datetime as dt
 import pytest
 
 import schedule_manager as sm
+from ezoe_content_source import EzoeContentSource
 
 
 def test_ensure_date_range_populates_week(monkeypatch):
@@ -13,8 +14,9 @@ def test_ensure_date_range_populates_week(monkeypatch):
     schedule = sm.Schedule()
     start = dt.date(2025, 1, 13)  # Monday
     end = start + dt.timedelta(days=6)
+    source = EzoeContentSource()
 
-    changed = sm.ensure_date_range(schedule, start, end)
+    changed = sm.ensure_date_range(schedule, source, start, end)
 
     assert changed is True
     assert len(schedule.entries) == 7
@@ -29,8 +31,9 @@ def test_ensure_date_range_populates_week(monkeypatch):
 def test_ensure_date_range_respects_existing_sequence():
     start = dt.date(2025, 2, 3)  # Monday
     schedule = sm.Schedule(entries=[sm.ScheduleEntry(date=start, selector="2-5-1")])
+    source = EzoeContentSource()
 
-    changed = sm.ensure_date_range(schedule, start + dt.timedelta(days=1), start + dt.timedelta(days=2))
+    changed = sm.ensure_date_range(schedule, source, start + dt.timedelta(days=1), start + dt.timedelta(days=2))
 
     assert changed is True
     selectors = [entry.selector for entry in schedule.entries]
@@ -89,7 +92,8 @@ def test_determine_seed_selector_prefers_existing():
         sm.ScheduleEntry(date=dt.date(2025, 1, 1), selector="3-2-6"),
         sm.ScheduleEntry(date=dt.date(2025, 1, 2), selector="3-2-7"),
     ])
+    source = EzoeContentSource()
 
-    seed = sm.determine_seed_selector(schedule)
+    seed = sm.determine_seed_selector(schedule, source)
     assert seed == "3-3-1"
 

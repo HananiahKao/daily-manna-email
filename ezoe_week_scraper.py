@@ -305,6 +305,66 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
     return str(wrapper)
 
 
+def get_volume_lessons(volume: int, base: str = "https://ezoe.work/books/2") -> List[int]:
+    """
+    Fetch the volume page (e.g. base/2264-<volume>.html) and return a sorted list of valid lesson numbers.
+    Filters out non-lesson resources (maps, manuals, etc.) based on text patterns.
+    """
+    # Construct volume URL: e.g. https://ezoe.work/books/2/2264-2.html
+    # Note: The base is typically .../books/2, so we append 2264-{volume}.html
+    # If base ends with /, strip it.
+    base = base.rstrip("/")
+    url = f"{base}/2264-{volume}.html"
+    
+    html = _fetch(url)
+    if not html:
+        return []
+
+    soup = BeautifulSoup(html, "html.parser")
+    valid_lessons = []
+    
+    # Regex to match lesson links: 2264-{volume}-{lesson}.html
+    link_pattern = re.compile(r"2264-" + str(volume) + r"-(\d+)\.html")
+    
+    # Regex to identify valid lesson text (must contain "第" and "课")
+    # and exclude known non-lesson keywords
+    # Support both digits and Chinese numerals
+    lesson_text_pattern = re.compile(r"第\s*[0-9一二三四五六七八九十百]+\s*课")
+    blacklist_pattern = re.compile(r"(路线图|平面图|安营图|家长手册)")
+
+    for a in soup.find_all("a", href=True):
+        href = a["href"].strip()
+        m = link_pattern.search(href)
+        if not m:
+            continue
+            
+        lesson_num = int(m.group(1))
+        
+        # Get the link text and preceding text to validate
+        text = _norm_text(a.get_text())
+        
+        # Sometimes the "第X课" is in a previous sibling text node
+        # But based on inspection, the structure is often:
+        # Text: "第一课" <a ...>Title</a>
+        # So we should look at the previous sibling text if the link text itself doesn't have it.
+        
+        context_text = text
+        prev = a.previous_sibling
+        if isinstance(prev, NavigableString):
+            context_text = _norm_text(str(prev)) + " " + text
+        elif prev and hasattr(prev, 'get_text'):
+             context_text = _norm_text(prev.get_text()) + " " + text
+
+        if blacklist_pattern.search(context_text):
+            continue
+            
+        # If it looks like a lesson (matches "第...课") and isn't blacklisted, include it.
+        if lesson_text_pattern.search(context_text):
+            valid_lessons.append(lesson_num)
+
+    return sorted(list(set(valid_lessons)))
+
+
 if __name__ == "__main__":
     import argparse, os, sys
     ap = argparse.ArgumentParser(description="Fetch a day's HTML from ezoe.work lesson page")

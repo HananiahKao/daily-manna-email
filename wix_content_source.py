@@ -234,3 +234,46 @@ class WixContentSource(ContentSource):
         # Extract weekday from selector (format: 【週一】, 【週二】, etc.)
         weekday = selector.strip("【】")  # e.g., "週一", "主日"
         return f"晨興聖言 | {weekday}"
+
+    def parse_selector(self, selector: str) -> int:
+        """Parse Wix selector (e.g., 【週一】) into a weekday index (0=Mon, 6=Sun)."""
+        clean = selector.strip("【】")
+        for label, index in WEEKDAY_LABELS.items():
+            if label.strip("【】") == clean:
+                return index - 1  # Convert 1-7 to 0-6
+        # Fallback/Reverse lookup if needed or error
+        raise ValueError(f"Invalid Wix selector: {selector}")
+
+    def format_selector(self, parsed: int) -> str:
+        """Format weekday index (0-6) back to Wix selector."""
+        if not (0 <= parsed <= 6):
+            raise ValueError("Weekday index must be 0..6")
+        # WEEKDAY_LABELS values are 1-7
+        target = parsed + 1
+        for label, index in WEEKDAY_LABELS.items():
+            if index == target:
+                return label
+        raise ValueError(f"Could not format weekday index: {parsed}")
+
+    def advance_selector(self, selector: str) -> str:
+        """Cycle through weekdays."""
+        current = self.parse_selector(selector)
+        next_day = (current + 1) % 7
+        return self.format_selector(next_day)
+
+    def previous_selector(self, selector: str) -> str:
+        """Cycle backwards through weekdays."""
+        current = self.parse_selector(selector)
+        prev_day = (current - 1) % 7
+        return self.format_selector(prev_day)
+
+    def validate_selector(self, selector: str) -> bool:
+        try:
+            self.parse_selector(selector)
+            return True
+        except ValueError:
+            return False
+
+    def get_default_selector(self) -> str:
+        """Default to Monday."""
+        return "【週一】"
