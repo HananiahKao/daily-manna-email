@@ -24,6 +24,8 @@ import os
 import re
 import sys
 import smtplib
+import base64
+from oauth_utils import get_xoauth2_string
 import socket
 import logging
 import datetime as dt
@@ -441,7 +443,9 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -
     smtp_host = os.environ["SMTP_HOST"]
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.environ["SMTP_USER"]
-    smtp_pass = os.environ["SMTP_PASSWORD"]
+    # smtp_pass is no longer needed, but we keep the variable for now to avoid breaking other parts
+    # that might use it, although the login part is removed.
+    smtp_pass = os.getenv("SMTP_PASSWORD", "")
     email_from = os.getenv("EMAIL_FROM", smtp_user)
     email_to_raw = os.environ["EMAIL_TO"]
     recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
@@ -475,8 +479,15 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
+            # Use XOAUTH2 for authentication
             if smtp_user:
-                server.login(smtp_user, smtp_pass)
+                xoauth2_string = get_xoauth2_string(smtp_user)
+                if xoauth2_string:
+                    # smtplib.auth expects the initial response to be base64 encoded
+                    b64_xoauth2_string = base64.b64encode(xoauth2_string.encode('utf-8')).decode('utf-8')
+                    server.auth("XOAUTH2", lambda: b64_xoauth2_string)
+                else:
+                    raise RuntimeError("Failed to get XOAUTH2 string for SMTP authentication.")
             server.sendmail(email_from, recipients, msg.as_string())
     except (smtplib.SMTPException, socket.error) as e:
         logger.error("Failed to send email: %s", e)

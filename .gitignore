@@ -6,3 +6,5 @@ state/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+debug.env

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import imaplib
+from oauth_utils import get_xoauth2_string
 import json
 import os
 from dataclasses import dataclass, field
@@ -79,7 +80,7 @@ class ImapConfig:
     host: str
     port: int
     username: str
-    password: str
+    password: str  # Kept for compatibility, but not used for login anymore
     mailbox: str
     allowed_senders: List[str]
     confirmation_recipients: List[str]
@@ -355,7 +356,17 @@ def process_mailbox(
     schedule = sm.load_schedule(schedule_path)
     summary = ProcessingSummary(run_at=now or dt.datetime.now(tz=sm.TAIWAN_TZ))
     imap = imaplib.IMAP4_SSL(config.host, config.port)
-    imap.login(config.username, config.password)
+
+    # Use XOAUTH2 for authentication
+    xoauth2_string = get_xoauth2_string(config.username)
+    if xoauth2_string:
+        # imaplib.authenticate expects the initial response to be base64 encoded
+        b64_xoauth2_string = base64.b64encode(xoauth2_string.encode('utf-8')).decode('utf-8')
+        response = imap.authenticate('XOAUTH2', lambda x: b64_xoauth2_string.encode('utf-8'))
+        if response[0] != 'OK':
+            raise imaplib.IMAP4.error(f"IMAP XOAUTH2 authentication failed: {response}")
+    else:
+        raise RuntimeError("Failed to get XOAUTH2 string for IMAP authentication.")
     try:
         imap.select(config.mailbox)
         criteria = _build_search_criteria(config)
