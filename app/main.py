@@ -20,6 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 import schedule_manager as sm
+import content_source_factory
 
 from app.config import AppConfig, get_config
 from app.security import require_user
@@ -470,7 +471,8 @@ def _normalize_week_start(value: Optional[str]) -> dt.date:
 
 def _ensure_week(schedule: sm.Schedule, start: dt.date, schedule_path: Path) -> dt.date:
     end = start + dt.timedelta(days=6)
-    if sm.ensure_date_range(schedule, start, end):
+    source = content_source_factory.get_active_source()
+    if sm.ensure_date_range(schedule, source, start, end):
         sm.save_schedule(schedule, schedule_path)
     return end
 
