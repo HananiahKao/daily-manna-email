@@ -1,4 +1,5 @@
 import os
+import json
 import base64
 import imaplib
 import smtplib
@@ -24,7 +25,11 @@ def get_credentials():
     
     # 1. Load existing token
     if Path(TOKEN_FILE).exists():
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+        except (ValueError, json.decoder.JSONDecodeError) as e:
+            print(f"Error loading token from {TOKEN_FILE}: {e}. Will initiate new OAuth flow.")
+            creds = None
 
     # 2. Refresh token if expired
     if not creds or not creds.valid:
@@ -54,14 +59,14 @@ def get_credentials():
             print("Please visit this URL in your browser to grant access:")
             print(auth_url)
             print("Then, paste the authorization code from the browser into the next prompt.")
-            
-            # We will stop here and wait for the user to provide the code.
-            # The flow will be resumed in the next step.
-            # We will now use the received code to complete the flow.
-            # This part is for one-time use only and should be removed after token generation.
-            # Since the token is generated, we revert this to the original flow.
-            raise RuntimeError("Waiting for user to provide authorization code.")
-            
+
+            # Prompt for the authorization code
+            auth_code = input("Enter the authorization code: ").strip()
+
+            # Fetch the token using the code
+            flow.fetch_token(code=auth_code)
+            creds = flow.credentials
+
             # Save the credentials for the next run
             with open(TOKEN_FILE, 'w') as token:
                 token.write(creds.to_json())
