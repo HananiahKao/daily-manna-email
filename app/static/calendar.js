@@ -75,6 +75,7 @@
         month: "long",
         year: "numeric",
       });
+      this.batchUIConfig = null;
     }
 
     init() {
@@ -88,7 +89,12 @@
       this.bindGlobalKeys();
       this.bindScrollBehavior();
       this.showInitialFlash();
-      this.resetToMonth().catch((error) => {
+
+      // Load batch UI config and schedule data
+      Promise.all([
+        this.loadBatchUIConfig(),
+        this.resetToMonth()
+      ]).catch((error) => {
         this.showFlash("error", error.message || "Unable to load schedule");
       });
     }
@@ -571,6 +577,32 @@
       await this.resetToMonth(this.currentYear, this.currentMonth);
     }
 
+    async loadBatchUIConfig() {
+      try {
+        const response = await fetch(
+          `${window.location.origin}/api/batch-edit/config`,
+          { credentials: "include" }
+        );
+        if (!response.ok) {
+          throw new Error("Failed to load batch edit configuration");
+        }
+        const data = await response.json();
+        this.batchUIConfig = data.ui_config;
+        return data;
+      } catch (error) {
+        console.error("Error loading batch UI config:", error);
+        // Fallback to generic config
+        this.batchUIConfig = {
+          placeholder: "Enter selectors (comma or newline separated)",
+          help_text: "Enter one or more selectors",
+          examples: [],
+          supports_range: false,
+          range_example: null,
+        };
+      }
+    }
+
+
     showInitialFlash() {
       if (this.config.message) {
         this.showFlash("success", this.config.message);
@@ -1001,12 +1033,52 @@
       if (!this.batchEditOverlay || !this.selection.size) {
         return;
       }
+
       // Clear form
-      if (this.batchSelectorInput) this.batchSelectorInput.value = "";
+      if (this.batchSelectorInput) {
+        this.batchSelectorInput.value = "";
+
+        // Apply UI config from backend
+        if (this.batchUIConfig) {
+          this.batchSelectorInput.placeholder = this.batchUIConfig.placeholder;
+          this.updateBatchHelpText(this.batchUIConfig.help_text);
+
+          if (this.batchUIConfig.supports_range && this.batchUIConfig.range_example) {
+            this.updateBatchRangeHint(this.batchUIConfig.range_example);
+          } else {
+            this.updateBatchRangeHint("");
+          }
+        }
+      }
+
       if (this.batchStatusInput) this.batchStatusInput.value = "";
       if (this.batchNotesInput) this.batchNotesInput.value = "";
       if (this.batchOverrideInput) this.batchOverrideInput.value = "";
       this.batchEditOverlay.hidden = false;
+
+      // Focus on selector input
+      setTimeout(() => {
+        this.batchSelectorInput?.focus();
+      }, 100);
+    }
+
+    updateBatchHelpText(text) {
+      const helpEl = document.getElementById("batch-selector-help");
+      if (helpEl) {
+        helpEl.textContent = text;
+      }
+    }
+
+    updateBatchRangeHint(example) {
+      const hintEl = document.getElementById("batch-range-hint");
+      if (hintEl) {
+        if (example) {
+          hintEl.textContent = `💡 Range syntax: ${example}`;
+          hintEl.hidden = false;
+        } else {
+          hintEl.hidden = true;
+        }
+      }
     }
 
     hideBatchEditOverlay() {
@@ -1021,13 +1093,32 @@
       }
 
       const selectorInput = this.batchSelectorInput?.value.trim() || "";
-      const selectors = this.parseSelectorInput(selectorInput);
 
-      // Validate selector count matches date count (unless empty or single selector)
-      if (selectorInput && selectors.length > 1 && selectors.length !== this.selection.size) {
-        this.showFlash("error", `Selector count (${selectors.length}) must match selected dates count (${this.selection.size}), or use 1 selector to apply to all.`);
-        this.batchSelectorInput.focus();
-        return;
+      // If no selector input, proceed with other fields only
+      let selectors = [];
+      if (selectorInput) {
+        // Parse selectors via backend API
+        try {
+          const parseResponse = await this.jsonFetch(
+            "/api/batch-edit/parse-selectors",
+            { input_text: selectorInput }
+          );
+          selectors = parseResponse.selectors;
+        } catch (error) {
+          this.showFlash("error", error.message || "Invalid selector format");
+          this.batchSelectorInput?.focus();
+          return;
+        }
+
+        // Validate selector count matches date count (unless single selector)
+        if (selectors.length > 1 && selectors.length !== this.selection.size) {
+          this.showFlash(
+            "error",
+            `Selector count (${selectors.length}) must match selected dates (${this.selection.size}), or use 1 selector for all.`
+          );
+          this.batchSelectorInput?.focus();
+          return;
+        }
       }
 
       const status = this.batchStatusInput?.value || null;
@@ -1037,10 +1128,10 @@
       // Sort selected dates chronologically
       const sortedDates = Array.from(this.selection).sort();
 
-      // Build entries array from selection
+      // Build entries array
       const entries = sortedDates.map((date, index) => ({
         date,
-        selector: selectors[index % selectors.length] || undefined,
+        selector: selectors.length > 0 ? selectors[index % selectors.length] : undefined,
         status: status || undefined,
         notes: notes || undefined,
         override: override || undefined,
@@ -1054,54 +1145,6 @@
       } catch (error) {
         this.showFlash("error", error.message || "Unable to update entries");
       }
-    }
-
-    parseSelectorInput(input) {
-      if (!input) {
-        return [];
-      }
-
-      // Check for range syntax: "start to end"
-      const rangeMatch = input.match(/^(.+?)\s+to\s+(.+)$/);
-      if (rangeMatch) {
-        const start = rangeMatch[1].trim();
-        const end = rangeMatch[2].trim();
-        return this.generateRangeSelectors(start, end);
-      }
-
-      // Otherwise, split by comma and also consider newlines
-      const selectors = input.split(/[,\n]+/).map(s => s.trim()).filter(s => s.length > 0);
-      return selectors;
-    }
-
-    generateRangeSelectors(start, end) {
-      // Parse selectors like "2-1-15" to "2-1-19"
-      const startParts = start.split('-').map((part, index) => index < 2 ? part : parseInt(part, 10));
-      const endParts = end.split('-').map((part, index) => index < 2 ? part : parseInt(part, 10));
-
-      if (startParts.length !== 3 || endParts.length !== 3 ||
-          startParts[0] !== endParts[0] || startParts[1] !== endParts[1]) {
-        // If parts don't match or non-numeric last part, just return start and end
-        return [start, end];
-      }
-
-      const startNum = startParts[2];
-      const endNum = endParts[2];
-
-      if (isNaN(startNum) || isNaN(endNum)) {
-        return [start, end];
-      }
-
-      if (startNum >= endNum) {
-        return [start, end];
-      }
-
-      // Generate the range
-      const selectors = [];
-      for (let i = startNum; i <= endNum; i++) {
-        selectors.push(`${startParts[0]}-${startParts[1]}-${i}`);
-      }
-      return selectors;
     }
 
     updateMonthYearLabel() {

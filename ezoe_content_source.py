@@ -238,3 +238,70 @@ class EzoeContentSource(ContentSource):
             # Let's assume False if we can't verify, but log it?
             # For now, return False to be safe against garbage.
             return False
+
+    def parse_batch_selectors(self, input_text: str) -> list[str]:
+        """Parse Ezoe batch input with support for range syntax."""
+        if not input_text or not input_text.strip():
+            return []
+        
+        input_text = input_text.strip()
+        
+        # Check for range syntax: "X to Y"
+        range_match = re.match(r'^(.+?)\s+to\s+(.+)$', input_text, re.IGNORECASE)
+        if range_match:
+            start = range_match.group(1).strip()
+            end = range_match.group(2).strip()
+            return self._generate_selector_range(start, end)
+        
+        # Otherwise, split by comma or newline
+        selectors = re.split(r'[,\n]+', input_text)
+        selectors = [s.strip() for s in selectors if s.strip()]
+        
+        # Validate each selector
+        for selector in selectors:
+            if not self.validate_selector(selector):
+                raise ValueError(f"Invalid Ezoe selector: '{selector}'. Expected format: volume-lesson-day (e.g., 2-1-15)")
+        
+        return selectors
+
+    def _generate_selector_range(self, start: str, end: str) -> list[str]:
+        """Generate a range of Ezoe selectors from start to end."""
+        # Parse start and end selectors
+        try:
+            start_vol, start_lesson, start_day = self.parse_selector(start)
+            end_vol, end_lesson, end_day = self.parse_selector(end)
+        except ValueError as e:
+            raise ValueError(f"Invalid range: {e}")
+        
+        # Validate same volume and lesson
+        if start_vol != end_vol or start_lesson != end_lesson:
+            raise ValueError(
+                f"Range must be within same volume and lesson. "
+                f"Got: {start} to {end}"
+            )
+        
+        # Validate start <= end
+        if start_day > end_day:
+            raise ValueError(
+                f"Range start day must be <= end day. Got: {start} to {end}"
+            )
+        
+        # Generate range
+        selectors = []
+        for day in range(start_day, end_day + 1):
+            selectors.append(self.format_selector((start_vol, start_lesson, day)))
+        
+        return selectors
+
+    def supports_range_syntax(self) -> bool:
+        return True
+
+    def get_batch_ui_config(self) -> dict:
+        return {
+            "placeholder": "e.g., 2-1-15 to 2-1-19 or 2-1-15, 2-1-16, 2-1-17",
+            "help_text": "Ezoe format: volume-lesson-day. Use 'X to Y' for ranges within the same lesson.",
+            "examples": ["2-1-15", "2-1-16", "2-1-17"],
+            "supports_range": True,
+            "range_example": "2-1-15 to 2-1-19",
+        }
+

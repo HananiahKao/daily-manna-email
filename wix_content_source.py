@@ -277,3 +277,83 @@ class WixContentSource(ContentSource):
     def get_default_selector(self) -> str:
         """Default to Monday."""
         return "【週一】"
+
+    def parse_batch_selectors(self, input_text: str) -> list[str]:
+        """Parse Wix batch input with support for weekday range syntax."""
+        if not input_text or not input_text.strip():
+            return []
+        
+        input_text = input_text.strip()
+        
+        # Check for range syntax: "X to Y" (supporting various forms)
+        range_patterns = [
+            (r'^(.+?)\s+to\s+(.+)$', 'to'),      # English "to"
+            (r'^(.+?)\s+TO\s+(.+)$', 'TO'),      # Uppercase
+            (r'^(.+?)\s+到\s+(.+)$', '到'),      # Chinese "to"
+        ]
+        
+        for pattern, separator in range_patterns:
+            range_match = re.match(pattern, input_text, re.IGNORECASE if separator.lower() == 'to' else 0)
+            if range_match:
+                start = range_match.group(1).strip()
+                end = range_match.group(2).strip()
+                return self._generate_selector_range(start, end)
+        
+        # Otherwise, split by comma or newline
+        selectors = re.split(r'[,\n]+', input_text)
+        selectors = [s.strip() for s in selectors if s.strip()]
+        
+        # Validate each selector
+        for selector in selectors:
+            if not self.validate_selector(selector):
+                raise ValueError(
+                    f"Invalid Wix selector: '{selector}'. "
+                    f"Expected format: 【週一】, 【週二】, etc."
+                )
+        
+        return selectors
+
+    def _generate_selector_range(self, start: str, end: str) -> list[str]:
+        """Generate a range of Wix selectors from start to end weekday."""
+        # Parse start and end selectors
+        try:
+            start_index = self.parse_selector(start)  # 0-6
+            end_index = self.parse_selector(end)      # 0-6
+        except ValueError as e:
+            raise ValueError(f"Invalid range: {e}")
+        
+        # Generate range (wrapping around if needed, e.g., Fri to Mon)
+        selectors = []
+        current = start_index
+        
+        # Handle both forward and backward ranges
+        if start_index <= end_index:
+            # Forward range: Mon to Fri
+            while current <= end_index:
+                selectors.append(self.format_selector(current))
+                current += 1
+        else:
+            # Wrap-around range: Fri to Mon (Fri, Sat, Sun, Mon)
+            while current <= 6:
+                selectors.append(self.format_selector(current))
+                current += 1
+            current = 0
+            while current <= end_index:
+                selectors.append(self.format_selector(current))
+                current += 1
+        
+        return selectors
+
+    def supports_range_syntax(self) -> bool:
+        return True
+
+    def get_batch_ui_config(self) -> dict:
+        return {
+            "placeholder": "e.g., 【週一】 to 【週五】 or 【週一】, 【週二】, 【週三】",
+            "help_text": "Wix format: Chinese weekday markers. Use 'X to Y' for ranges or separate with commas.",
+            "examples": ["【週一】", "【週二】", "【週三】", "【週四】", "【週五】"],
+            "supports_range": True,
+            "range_example": "【週一】 to 【週五】",
+        }
+
+

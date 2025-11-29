@@ -40,7 +40,8 @@ class EntryPayload(BaseModel):
     @validator("selector")
     def _validate_selector(cls, value: Optional[str]) -> Optional[str]:
         if value:
-            sm.parse_selector(value)
+            source = content_source_factory.get_active_source()
+            source.parse_selector(value)
         return value
 
     @validator("status")
@@ -87,6 +88,11 @@ class BatchUpdatePayload(BaseModel):
         for entry in value:
             seen.setdefault(entry.date, None)
         return value
+
+
+class BatchSelectorParsePayload(BaseModel):
+    input_text: str
+
 
 
 def create_app() -> FastAPI:
@@ -328,6 +334,46 @@ def create_app() -> FastAPI:
         sm.save_schedule(schedule, schedule_path)
         return JSONResponse({"entries": updated_entries})
 
+    @app.get("/api/batch-edit/config", response_class=JSONResponse)
+    def api_batch_edit_config(
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get UI configuration for batch editing based on active content source."""
+        source = content_source_factory.get_active_source()
+        
+        config = {
+            "source_name": source.get_source_name(),
+            "ui_config": source.get_batch_ui_config(),
+        }
+        
+        return JSONResponse(config)
+
+    @app.post("/api/batch-edit/parse-selectors", response_class=JSONResponse)
+    def api_parse_batch_selectors(
+        payload: BatchSelectorParsePayload,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """
+        Parse batch selector input using the active content source.
+        
+        Returns parsed selectors or error message.
+        """
+        source = content_source_factory.get_active_source()
+        
+        try:
+            selectors = source.parse_batch_selectors(payload.input_text)
+            return JSONResponse({
+                "success": True,
+                "selectors": selectors,
+                "count": len(selectors),
+            })
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+
+
     @app.post("/actions/{date}")
     def handle_action(
         request: Request,
@@ -373,7 +419,8 @@ def create_app() -> FastAPI:
             elif action == "selector":
                 if not selector:
                     raise ValueError("Selector value is required")
-                sm.parse_selector(selector)
+                source = content_source_factory.get_active_source()
+                source.parse_selector(selector)
                 entry.selector = selector
                 message = f"Selector updated for {target_date.isoformat()}."
             elif action == "status":

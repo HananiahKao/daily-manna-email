@@ -8,6 +8,7 @@ like ezoe.work or Wix sites.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import List
 
 
 @dataclass
@@ -74,4 +75,50 @@ class ContentSource(ABC):
     @abstractmethod
     def get_default_selector(self) -> str:
         """Returns a default starting selector for this source."""
+        pass
+
+    @abstractmethod
+    def parse_batch_selectors(self, input_text: str) -> List[str]:
+        """
+        Parse batch selector input into a list of individual selectors.
+        
+        Handles content source-specific syntax like:
+        - Range syntax (e.g., "2-1-15 to 2-1-19" for Ezoe)
+        - Comma/newline separation
+        - Content source-specific validation
+        
+        Args:
+            input_text: Raw input from user (may contain ranges, commas, newlines)
+            
+        Returns:
+            List of validated selector strings
+            
+        Raises:
+            ValueError: If input contains invalid selectors or syntax
+        """
+        pass
+
+    @abstractmethod
+    def supports_range_syntax(self) -> bool:
+        """
+        Returns whether this content source supports range syntax (e.g., "X to Y").
+        
+        Returns:
+            True if range syntax is supported, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    def get_batch_ui_config(self) -> dict:
+        """
+        Returns UI configuration for batch editing with this content source.
+        
+        Returns:
+            dict with keys:
+                - placeholder: str - Placeholder text for batch input field
+                - help_text: str - Help text explaining selector format
+                - examples: List[str] - Example selectors
+                - supports_range: bool - Whether range syntax is supported
+                - range_example: str | None - Example of range syntax
+        """
         pass

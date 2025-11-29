@@ -86,7 +86,13 @@
     <p>Edit selected events:</p>
     <div class="batch-edit-field">
       <label for="batch-selector">Selector</label>
-      <input type="text" id="batch-selector" name="selector" placeholder="e.g. 2-1-3">
+      <input type="text" id="batch-selector" name="selector" placeholder="e.g. 2-1-3" aria-describedby="batch-selector-help batch-range-hint">
+      <small id="batch-selector-help" class="form-text text-muted">
+        <!-- Dynamic help text from backend -->
+      </small>
+      <small id="batch-range-hint" class="form-text text-info" hidden>
+        <!-- Dynamic range hint from backend -->
+      </small>
       <small>Leave blank to keep existing values</small>
     </div>
     <div class="batch-edit-field">
