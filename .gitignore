@@ -8,3 +8,7 @@ __pycache__/
 .pytest_cache/
 
 debug.env
+
+# OAuth credentials
+token.json
+client_secret.json
