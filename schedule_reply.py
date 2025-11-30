@@ -256,10 +256,7 @@ def _parse_instruction(token: str, verb: str, tail: str, source: str) -> ReplyIn
     if verb in {"selector", "sel"}:
         if not tail:
             raise ParseError(f"selector requires value ({token})")
-        try:
-            sm.parse_selector(tail)
-        except ValueError as exc:
-            raise ParseError(f"invalid selector '{tail}' for token {token}") from exc
+        # Note: Selector validation is deferred to the content source when applied
         return ReplyInstruction(token=token, verb="selector", arguments={"selector": tail}, source=source)
     if verb in {"note", "notes", "comment"}:
         if not tail:

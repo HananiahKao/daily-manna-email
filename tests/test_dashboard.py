@@ -51,7 +51,23 @@ def test_dashboard_renders_schedule(dashboard_client):
     client, schedule_path, base_date = dashboard_client
     response = client.get("/", headers=_auth_header())
     assert response.status_code == 200
-    assert "2-10-1" in response.text
+    
+    # Check that the calendar data is available via API
+    api_response = client.get(
+        f"/api/month?year={base_date.year}&month={base_date.month}",
+        headers=_auth_header()
+    )
+    assert api_response.status_code == 200
+    data = api_response.json()
+    
+    # Find the entry for base_date in the API response
+    entry_found = False
+    for entry in data["entries"]:
+        if entry["date"] == base_date.isoformat():
+            assert entry["selector"] == "2-10-1"
+            entry_found = True
+            break
+    assert entry_found, f"Entry for {base_date} not found in API response"
 
     schedule = sm.load_schedule(schedule_path)
     assert schedule.get_entry(base_date) is not None

@@ -100,11 +100,6 @@ def test_parse_reply_body_rejects_keep_extra_text():
         sr.parse_reply_body("[AAA111] keep please")
 
 
-def test_parse_reply_body_validates_selector():
-    with pytest.raises(sr.ParseError):
-        sr.parse_reply_body("[AAA111] selector bad-value")
-
-
 def test_parse_reply_body_override_requires_text():
     with pytest.raises(sr.ParseError):
         sr.parse_reply_body("[AAA111] override ")

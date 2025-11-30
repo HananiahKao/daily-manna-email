@@ -104,8 +104,9 @@ def test_extract_readable_text_fallbacks():
     assert isinstance(text2, str)
 
 
+@patch("sjzl_daily_email.get_xoauth2_string")
 @patch("smtplib.SMTP")
-def test_send_email_starttls(mock_smtp, monkeypatch):
+def test_send_email_starttls(mock_smtp, mock_oauth, monkeypatch):
     # Set required envs
     monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("SMTP_PORT", "587")
@@ -114,22 +115,28 @@ def test_send_email_starttls(mock_smtp, monkeypatch):
     monkeypatch.setenv("EMAIL_TO", "to@example.com")
     monkeypatch.setenv("TLS_MODE", "starttls")
 
+    # Mock OAuth to return a valid XOAUTH2 string
+    mock_oauth.return_value = "user=user@example.com\x01auth=Bearer fake_token\x01\x01"
+
+    # Create mock server instance
     instance = MagicMock()
-    # Make the context manager return our instance
-    mock_smtp.return_value.__enter__.return_value = instance
-    mock_smtp.return_value.__exit__.return_value = False
+    instance.docmd.return_value = (235, b"Authentication successful")
+    
+    # Configure the SMTP mock to return our instance via context manager
+    mock_smtp.return_value = instance
 
     sjzl.send_email("Subj", "Body")
 
     assert mock_smtp.called
-    # starttls/login/sendmail are called on the server object inside the with-block
-    mock_smtp.return_value.starttls.assert_called()
-    mock_smtp.return_value.login.assert_called_with("user@example.com", "secret")
-    mock_smtp.return_value.sendmail.assert_called()
+    # starttls/docmd/sendmail are called on the server object
+    instance.starttls.assert_called()
+    instance.docmd.assert_called()
+    instance.sendmail.assert_called()
 
 
+@patch("sjzl_daily_email.get_xoauth2_string")
 @patch("smtplib.SMTP_SSL")
-def test_send_email_ssl_with_html(mock_smtp_ssl, monkeypatch):
+def test_send_email_ssl_with_html(mock_smtp_ssl, mock_oauth, monkeypatch):
     monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("SMTP_PORT", "465")
     monkeypatch.setenv("SMTP_USER", "user@example.com")
@@ -137,11 +144,17 @@ def test_send_email_ssl_with_html(mock_smtp_ssl, monkeypatch):
     monkeypatch.setenv("EMAIL_TO", "to1@example.com, to2@example.com")
     monkeypatch.setenv("TLS_MODE", "ssl")
 
+    # Mock OAuth to return a valid XOAUTH2 string
+    mock_oauth.return_value = "user=user@example.com\x01auth=Bearer fake_token\x01\x01"
+
+    # Create mock server instance
     instance = MagicMock()
-    mock_smtp_ssl.return_value.__enter__.return_value = instance
-    mock_smtp_ssl.return_value.__exit__.return_value = False
+    instance.docmd.return_value = (235, b"Authentication successful")
+    
+    # Configure the SMTP_SSL mock to return our instance via context manager
+    mock_smtp_ssl.return_value = instance
 
     sjzl.send_email("Subj", "Body", html_body="<b>Hi</b>")
 
     assert mock_smtp_ssl.called
-    mock_smtp_ssl.return_value.sendmail.assert_called()
+    instance.sendmail.assert_called()

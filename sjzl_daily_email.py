@@ -482,12 +482,15 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -
             # Use XOAUTH2 for authentication
             if smtp_user:
                 xoauth2_string = get_xoauth2_string(smtp_user)
-                if xoauth2_string:
-                    # smtplib.auth expects the initial response to be base64 encoded
-                    b64_xoauth2_string = base64.b64encode(xoauth2_string.encode('utf-8')).decode('utf-8')
-                    server.auth("XOAUTH2", lambda: b64_xoauth2_string)
-                else:
-                    raise RuntimeError("Failed to get XOAUTH2 string for SMTP authentication.")
+            if xoauth2_string:
+                # SMTP XOAUTH2 expects base64 encoded auth string
+                b64_xoauth2_string = base64.b64encode(xoauth2_string.encode('utf-8')).decode('utf-8')
+                # Use docmd for AUTH XOAUTH2 command directly
+                response = server.docmd("AUTH", "XOAUTH2 " + b64_xoauth2_string)
+                if not response[0] == 235:  # 235 is success code for AUTH
+                    raise smtplib.SMTPAuthenticationError(response[0], response[1])
+            else:
+                raise RuntimeError("Failed to get XOAUTH2 string for SMTP authentication.")
             server.sendmail(email_from, recipients, msg.as_string())
     except (smtplib.SMTPException, socket.error) as e:
         logger.error("Failed to send email: %s", e)
