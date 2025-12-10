@@ -327,38 +327,44 @@ def get_volume_lessons(volume: int, base: str = "https://ezoe.work/books/2") -> 
     link_pattern = re.compile(r"2264-" + str(volume) + r"-(\d+)\.html")
     
     # Regex to identify valid lesson text (must contain "第" and "课")
-    # and exclude known non-lesson keywords
     # Support both digits and Chinese numerals
     lesson_text_pattern = re.compile(r"第\s*[0-9一二三四五六七八九十百]+\s*课")
-    blacklist_pattern = re.compile(r"(路线图|平面图|安营图|家长手册)")
 
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
         m = link_pattern.search(href)
         if not m:
             continue
-            
-        lesson_num = int(m.group(1))
-        
-        # Get the link text and preceding text to validate
-        text = _norm_text(a.get_text())
-        
-        # Sometimes the "第X课" is in a previous sibling text node
-        # But based on inspection, the structure is often:
-        # Text: "第一课" <a ...>Title</a>
-        # So we should look at the previous sibling text if the link text itself doesn't have it.
-        
-        context_text = text
-        prev = a.previous_sibling
-        if isinstance(prev, NavigableString):
-            context_text = _norm_text(str(prev)) + " " + text
-        elif prev and hasattr(prev, 'get_text'):
-             context_text = _norm_text(prev.get_text()) + " " + text
 
-        if blacklist_pattern.search(context_text):
-            continue
-            
-        # If it looks like a lesson (matches "第...课") and isn't blacklisted, include it.
+        lesson_num = int(m.group(1))
+
+        # Get the link text
+        text = _norm_text(a.get_text())
+
+        # Build context using the immediate title container for each lesson
+        # Lessons 1-18: title container is grandparent (flex div with lesson number + title)
+        # Lessons 19-20: title container is direct parent (simple div with just title)
+        context_text = text
+
+        # Find the appropriate title container
+        title_container = None
+        if a.parent and hasattr(a.parent, 'get'):
+            parent_id = a.parent.get('id')
+            if parent_id == 'title':
+                # Direct title container (lessons 19-20)
+                title_container = a.parent
+            elif a.parent.parent and a.parent.parent.get('id') == 'title':
+                # Flex title container (lessons 1-18)
+                title_container = a.parent.parent
+
+        if title_container and hasattr(title_container, 'get_text'):
+            container_text = _norm_text(title_container.get_text())
+            # Only use container text if it contains the lesson number pattern we expect
+            if lesson_text_pattern.search(container_text):
+                context_text = container_text
+
+        # Only include links that have "第...课" (lesson number) in their context text.
+        # This excludes maps, charts, and other non-lesson content.
         if lesson_text_pattern.search(context_text):
             valid_lessons.append(lesson_num)
 

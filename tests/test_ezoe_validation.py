@@ -5,19 +5,29 @@ from ezoe_week_scraper import get_volume_lessons
 from ezoe_content_source import EzoeContentSource
 from schedule_manager import ensure_date_range, Schedule, ScheduleEntry
 
-# Mock HTML for volume page
+# Mock HTML for volume page - matches actual ezoe.work structure
 VOLUME_HTML = """
 <html>
 <body>
 <div class="main">
-    <p>第一课 <a href="2264-2-1.html">Lesson 1</a></p>
-    <p>第二课 <a href="2264-2-2.html">Lesson 2</a></p>
-    <p>第三课 <a href="2264-2-3.html">Lesson 3</a></p>
-    
-    <!-- Non-lesson resources -->
-    <p>以色列出埃及至迦南路线图 <a href="2264-2-19.html">Map 1</a></p>
-    <p>帐幕平面图 <a href="2264-2-20.html">Map 2</a></p>
-    <p>以色列子民安营图 <a href="2264-2-21.html">Map 3</a></p>
+    <!-- Actual lessons have flex divs with lesson numbers -->
+    <div id="title" style="display:flex">
+        <div style="word-break: keep-all;font-weight:bold;">第一课</div>
+        <div><a class="content link" href="2264-2-1.html">Lesson 1</a></div>
+    </div>
+    <div id="title" style="display:flex">
+        <div style="word-break: keep-all;font-weight:bold;">第二课</div>
+        <div><a class="content link" href="2264-2-2.html">Lesson 2</a></div>
+    </div>
+    <div id="title" style="display:flex">
+        <div style="word-break: keep-all;font-weight:bold;">第三课</div>
+        <div><a class="content link" href="2264-2-3.html">Lesson 3</a></div>
+    </div>
+
+    <!-- Non-lesson resources have simple title divs without lesson numbers -->
+    <div id="title"><a class="content link" href="2264-2-19.html">以色列出埃及至迦南路线图</a></div>
+    <div id="title"><a class="content link" href="2264-2-20.html">帐幕平面图</a></div>
+    <div id="title"><a class="content link" href="2264-2-21.html">以色列子民安营图</a></div>
 </div>
 </body>
 </html>
