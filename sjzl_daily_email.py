@@ -35,7 +35,7 @@ from email.header import Header
 from email.utils import formataddr
 from email import encoders
 from email.charset import Charset, QP
-from typing import Optional, Tuple, List, Optional as TypingOptional
+from typing import Optional, Tuple, List, Optional as TypingOptional, cast
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -49,7 +49,7 @@ def _ezoe_lesson_url(selector: str, base: str) -> str:
     m = _re.fullmatch(r"(\d+)-(\d+)-(\d)", selector)
     if not m:
         raise ValueError("Invalid EZOe selector format: '<volume>-<lesson>-<day>'")
-    vol = int(m.group(1)); les = int(m.group(2))
+    vol, les = map(int, cast(tuple[str, str], m.groups()))
     filename = f"2264-{vol}-{les}.html"
     return urljoin(base.rstrip('/') + '/', filename)
 
@@ -80,7 +80,7 @@ def _ezoe_detect_anchor_id(selector: str, base: str) -> Optional[str]:
         m = re.fullmatch(r"(\d+)-(\d+)-(\d)", selector)
         if not m:
             return None
-        volume = int(m.group(1)); lesson = int(m.group(2)); day = int(m.group(3))
+        volume, lesson, day = [int(g) for g in cast(tuple[str, str, str], m.groups())]
         if not (1 <= day <= 7):
             return None
         label = ez.DAY_LABELS.get(day)
@@ -101,7 +101,7 @@ def _ezoe_detect_anchor_id(selector: str, base: str) -> Optional[str]:
     return None
 
 
-def _fetch_css_texts_from_page(html: str, page_url: str, max_bytes: int = None) -> str:
+def _fetch_css_texts_from_page(html: str, page_url: str, max_bytes: Optional[int] = None) -> str:
     """Collect CSS from inline <style> and linked stylesheets (same-origin).
 
     For testing, `max_bytes` may be None to disable capping.
@@ -128,12 +128,16 @@ def _fetch_css_texts_from_page(html: str, page_url: str, max_bytes: int = None) 
     except Exception:
         page_host = ""
     for link in soup.find_all("link", rel=True, href=True):
-        if str(link.get("rel")).lower().find("stylesheet") < 0:
-            # accept rel=['stylesheet'] or similar
-            rels = link.get("rel")
-            if not rels or not any(str(r).lower() == "stylesheet" for r in rels):
-                continue
-        href = link.get("href").strip()
+        rel_value = link.get("rel")
+        if not rel_value:
+            continue
+        rels_str = ', '.join(rel_value) if isinstance(rel_value, list) else str(rel_value)
+        if 'stylesheet' not in rels_str.lower():
+            continue
+        href_value = link.get("href")
+        if not href_value:
+            continue
+        href = str(href_value).strip()
         css_url = urljoin(page_url, href)
         try:
             if urlparse(css_url).hostname != page_host:
@@ -257,10 +261,18 @@ def _maybe_convert_zh_cn_to_zh_tw(text: str) -> str:
     if not text:
         return text
     try:
+        import sys
+        print(f"DEBUG: Converting text length {len(text)}", file=sys.stderr)
         from opencc import OpenCC  # type: ignore
         cc = OpenCC('s2tw')  # Simplified Chinese to Traditional Chinese (Taiwan)
-        return cc.convert(text)
-    except Exception:
+        result = cc.convert(text)
+        print(f"DEBUG: Conversion successful, original length {len(text)}, converted length {len(result)}", file=sys.stderr)
+        return result
+    except Exception as e:
+        import traceback
+        print(f"DEBUG: OpenCC conversion failed: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        logger.error("OpenCC conversion failed: %s, text length: %s", str(e), len(text))
         return text
 
 
@@ -358,7 +370,7 @@ def extract_lesson_links(index_html: str, index_url: str) -> List[Tuple[int, str
     soup = BeautifulSoup(index_html, "html.parser")
     lessons = []
     for a in soup.find_all("a", href=True):
-        href = a["href"].strip()
+        href = str(a.get("href") or "").strip()
         m = LESSON_PATTERN.match(href)
         if not m:
             continue
@@ -480,6 +492,7 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -
                 server.starttls()
                 server.ehlo()
             # Use XOAUTH2 for authentication
+            xoauth2_string = None
             if smtp_user:
                 xoauth2_string = get_xoauth2_string(smtp_user)
             if xoauth2_string:
