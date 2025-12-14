@@ -9,6 +9,9 @@ __pycache__/
 
 debug.env
 
+# Test environment logs
+test_env*.log
+
 # OAuth credentials
 token.json
 client_secret.json
