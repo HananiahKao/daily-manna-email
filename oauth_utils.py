@@ -8,10 +8,11 @@ from pathlib import Path
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
 
 # Define minimal scopes required for the application:
-# - gmail.send for SMTP email sending
-# - gmail.readonly for IMAP email reading (schedule updates)
+# - gmail.send for sending messages via Gmail API
+# - gmail.readonly for reading messages via Gmail API
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/gmail.readonly'
@@ -26,7 +27,7 @@ def get_credentials():
     the flow for a new token if none exists.
     """
     creds = None
-    
+
     # 1. Load existing token
     if Path(TOKEN_FILE).exists():
         try:
@@ -44,7 +45,7 @@ def get_credentials():
             except Exception as e:
                 print(f"Error refreshing token: {e}")
                 creds = None # Force a new flow if refresh fails
-        
+
         if not creds or not creds.valid:
             # 3. Get new token if none exists or refresh failed
             print("Initiating new OAuth 2.0 flow. User interaction required.")
@@ -57,7 +58,7 @@ def get_credentials():
             # We must explicitly set the redirect_uri to 'urn:ietf:wg:oauth:2.0:oob' for the manual flow.
             flow = InstalledAppFlow.from_client_secrets_file(
                 CLIENT_SECRET_FILE, SCOPES, redirect_uri='urn:ietf:wg:oauth:2.0:oob')
-            
+
             auth_url, _ = flow.authorization_url(prompt='consent')
             print("\n*** USER INTERACTION REQUIRED ***")
             print("Please visit this URL in your browser to grant access:")
@@ -75,7 +76,7 @@ def get_credentials():
             with open(TOKEN_FILE, 'w') as token:
                 token.write(creds.to_json())
             print(f"New token saved to {TOKEN_FILE}.")
-    
+
     return creds
 
 def generate_xoauth2_string(email_address, access_token):
@@ -123,3 +124,13 @@ def imap_xoauth2_authenticate(imap_server, email_address):
             raise imaplib.IMAP4.error(f"IMAP XOAUTH2 authentication failed: {response}")
         return response
     raise ValueError("Could not get XOAUTH2 string for IMAP authentication.")
+
+
+def get_gmail_service():
+    """
+    Creates and returns a Gmail API service instance using OAuth credentials.
+    """
+    creds = get_credentials()
+    if not creds:
+        raise RuntimeError("Failed to obtain OAuth credentials for Gmail API")
+    return build('gmail', 'v1', credentials=creds)
