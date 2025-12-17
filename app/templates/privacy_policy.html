@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy{% endblock %}
+{% block content %}
+<section class="privacy-policy">
+  <h1>Privacy Policy</h1>
+
+  <p><em>Last updated: {{ "now"|date:"F j, Y" }}</em></p>
+
+  <h2>Overview</h2>
+  <p>This Privacy Policy describes how the Daily Manna Email application ("we", "us", or "our") collects, uses, and protects information when you use our service for receiving daily devotional content via email.</p>
+
+  <h2>Information We Collect</h2>
+
+  <h3>Email Data</h3>
+  <ul>
+    <li><strong>Recipient Email Addresses:</strong> Email addresses provided for receiving daily devotional emails</li>
+    <li><strong>Sender Email Configuration:</strong> Gmail account credentials and settings for sending emails</li>
+    <li><strong>Email Content:</strong> Daily devotional content fetched from external sources</li>
+  </ul>
+
+  <h3>Schedule Management Data</h3>
+  <ul>
+    <li><strong>Content Schedule:</strong> Dates and selectors for organizing devotional content delivery</li>
+    <li><strong>Delivery Status:</strong> Tracking of email send status, delivery dates, and notes</li>
+    <li><strong>Administrative Notes:</strong> Internal notes for content management</li>
+  </ul>
+
+  <h3>Authentication Data</h3>
+  <ul>
+    <li><strong>Dashboard Credentials:</strong> Username and password for accessing the administrative dashboard</li>
+    <li><strong>OAuth Tokens:</strong> Google OAuth tokens for Gmail API access</li>
+  </ul>
+
+  <h2>How We Use Your Information</h2>
+
+  <h3>Primary Purpose</h3>
+  <p>We use the collected information exclusively for:</p>
+  <ul>
+    <li><strong>Email Delivery:</strong> Sending automated daily devotional emails to subscribed recipients</li>
+    <li><strong>Content Management:</strong> Organizing and scheduling devotional content delivery</li>
+    <li><strong>Service Administration:</strong> Managing the email delivery system and troubleshooting issues</li>
+  </ul>
+
+  <h3>Data Processing</h3>
+  <ul>
+    <li><strong>Content Fetching:</strong> Retrieving devotional content from authorized external sources (ezoe.work, churchintamsui.wixsite.com)</li>
+    <li><strong>Email Processing:</strong> Formatting and sending emails via Gmail SMTP</li>
+    <li><strong>Schedule Processing:</strong> Managing delivery schedules and tracking send status</li>
+    <li><strong>Reply Processing:</strong> Reading administrative email replies for schedule updates</li>
+  </ul>
+
+  <h2>Data Storage and Security</h2>
+
+  <h3>Storage Location</h3>
+  <p>All data is stored on secure servers. Schedule data is stored locally in JSON files, while email processing uses Google's secure infrastructure.</p>
+
+  <h3>Security Measures</h3>
+  <ul>
+    <li><strong>Access Control:</strong> Administrative access requires authentication</li>
+    <li><strong>OAuth Security:</strong> Google OAuth 2.0 for secure API access</li>
+    <li><strong>Data Encryption:</strong> TLS encryption for email transmission</li>
+    <li><strong>Minimal Permissions:</strong> OAuth scopes limited to required Gmail operations</li>
+  </ul>
+
+  <h3>Data Retention</h3>
+  <p>Email addresses and schedule data are retained as long as the service is active. OAuth tokens are refreshed automatically and stored securely.</p>
+
+  <h2>Third-Party Services</h2>
+
+  <h3>Google Services</h3>
+  <p>This application integrates with Google Gmail for email sending and receiving. Google's Privacy Policy applies to data processed through their services.</p>
+
+  <h3>Content Sources</h3>
+  <p>Devotional content is sourced from external websites. We only fetch publicly available content and do not store personal data from these sources.</p>
+
+  <h2>Data Sharing</h2>
+  <p>We do not sell, trade, or otherwise transfer your personal information to third parties except as described in this policy. Email addresses are only used for sending the devotional content you requested.</p>
+
+  <h2>Your Rights</h2>
+  <ul>
+    <li><strong>Access:</strong> Administrative users can access stored data through the dashboard</li>
+    <li><strong>Correction:</strong> Schedule data can be updated through the administrative interface</li>
+    <li><strong>Deletion:</strong> Data can be removed upon request</li>
+  </ul>
+
+  <h2>International Data Transfers</h2>
+  <p>Data may be processed and stored in different countries depending on server location and Google service usage.</p>
+
+  <h2>Changes to This Policy</h2>
+  <p>We may update this Privacy Policy periodically. Changes will be reflected in the "Last updated" date. Continued use of the service constitutes acceptance of the updated policy.</p>
+
+  <h2>Contact Information</h2>
+  <p>For questions about this Privacy Policy or data handling practices, please contact the service administrators.</p>
+</section>
+{% endblock %}

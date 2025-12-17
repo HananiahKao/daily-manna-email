@@ -107,6 +107,14 @@ def create_app() -> FastAPI:
     def healthz() -> JSONResponse:
         return JSONResponse({"status": "ok"})
 
+    @app.get("/privacy-policy", response_class=HTMLResponse)
+    def privacy_policy(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(request, "privacy_policy.html")
+
+    @app.get("/terms-of-service", response_class=HTMLResponse)
+    def terms_of_service(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(request, "terms_of_service.html")
+
     @app.get("/", response_class=HTMLResponse, name="dashboard")
     def dashboard(
         request: Request,

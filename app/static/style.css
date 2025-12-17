@@ -10,6 +10,8 @@ body {
   padding: 0;
   background: #f3f4f6;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .page-header {
@@ -571,5 +573,116 @@ kbd {
 
   .calendar-toolbar-controls button {
     padding: 0.35rem 0.6rem;
+  }
+}
+
+/* Footer Styles */
+.page-footer {
+  background: #1f2937;
+  color: #ffffff;
+  padding: 1rem 2rem;
+  margin-top: auto;
+  border-top: 1px solid #374151;
+}
+
+.footer-nav {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+}
+
+.footer-nav a {
+  color: #9ca3af;
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 0.2s ease;
+}
+
+.footer-nav a:hover {
+  color: #ffffff;
+}
+
+/* Privacy Policy and Terms of Service Styles */
+.privacy-policy,
+.terms-of-service {
+  max-width: 800px;
+  margin: 0 auto;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+}
+
+.privacy-policy h1,
+.terms-of-service h1 {
+  color: #111827;
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.privacy-policy h2,
+.terms-of-service h2 {
+  color: #1f2937;
+  font-size: 1.4rem;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0.5rem;
+}
+
+.privacy-policy h3,
+.terms-of-service h3 {
+  color: #374151;
+  font-size: 1.1rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.privacy-policy p,
+.privacy-policy li,
+.terms-of-service p,
+.terms-of-service li {
+  line-height: 1.6;
+  color: #4b5563;
+}
+
+.privacy-policy ul,
+.privacy-policy ol,
+.terms-of-service ul,
+.terms-of-service ol {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.privacy-policy li,
+.terms-of-service li {
+  margin-bottom: 0.5rem;
+}
+
+.privacy-policy strong,
+.terms-of-service strong {
+  color: #111827;
+  font-weight: 600;
+}
+
+.privacy-policy em,
+.terms-of-service em {
+  color: #6b7280;
+  font-style: italic;
+}
+
+@media (max-width: 600px) {
+  .privacy-policy,
+  .terms-of-service {
+    padding: 1.5rem;
+    margin: 0 1rem;
+  }
+
+  .footer-nav {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
   }
 }

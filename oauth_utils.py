@@ -9,9 +9,13 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
-# Define the scope for full mail access, as the existing code uses both IMAP and SMTP
-# which often requires the full mail scope.
-SCOPES = ['https://mail.google.com/']
+# Define minimal scopes required for the application:
+# - gmail.send for SMTP email sending
+# - gmail.readonly for IMAP email reading (schedule updates)
+SCOPES = [
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.readonly'
+]
 CLIENT_SECRET_FILE = 'client_secret.json'
 TOKEN_FILE = 'token.json'
 
