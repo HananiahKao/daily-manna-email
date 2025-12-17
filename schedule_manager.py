@@ -180,6 +180,14 @@ class Schedule:
             self.entries.append(entry)
             self.entries.sort(key=lambda e: e.date)
 
+    def remove_entry(self, date: dt.date) -> bool:
+        """Remove an entry by date. Returns True if entry was found and removed."""
+        for i, entry in enumerate(self.entries):
+            if entry.date == date:
+                self.entries.pop(i)
+                return True
+        return False
+
 
 def get_schedule_path() -> Path:
     """Return path to the schedule file, respecting SCHEDULE_FILE env override."""

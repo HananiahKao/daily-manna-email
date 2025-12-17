@@ -229,6 +229,20 @@ def create_app() -> FastAPI:
         sm.save_schedule(schedule, schedule_path)
         return JSONResponse({"entry": _serialize_entry(entry, entry.date), "created": created})
 
+    @app.delete("/api/entry/{date}", response_class=JSONResponse)
+    def api_delete_entry(
+        date: dt.date,
+        _: str = Depends(require_user),
+        settings: AppConfig = Depends(get_config),
+    ) -> JSONResponse:
+        schedule_path = _resolve_schedule_path(settings)
+        schedule = sm.load_schedule(schedule_path)
+        removed = schedule.remove_entry(date)
+        if not removed:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+        sm.save_schedule(schedule, schedule_path)
+        return JSONResponse({"deleted": True, "date": date.isoformat()})
+
     @app.post("/api/entry/{date}/move", response_class=JSONResponse)
     def api_move_entry(
         date: dt.date,
@@ -355,11 +369,11 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         """
         Parse batch selector input using the active content source.
-        
+
         Returns parsed selectors or error message.
         """
         source = content_source_factory.get_active_source()
-        
+
         try:
             selectors = source.parse_batch_selectors(payload.input_text)
             return JSONResponse({
@@ -372,6 +386,32 @@ def create_app() -> FastAPI:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(e)
             )
+
+    @app.post("/api/entries/batch-delete", response_class=JSONResponse)
+    def api_batch_delete_entries(
+        dates: List[dt.date],
+        _: str = Depends(require_user),
+        settings: AppConfig = Depends(get_config),
+    ) -> JSONResponse:
+        """
+        Delete multiple schedule entries by dates.
+        """
+        schedule_path = _resolve_schedule_path(settings)
+        schedule = sm.load_schedule(schedule_path)
+
+        deleted_dates = []
+        for date in dates:
+            if schedule.remove_entry(date):
+                deleted_dates.append(date)
+
+        if not deleted_dates:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No entries found to delete")
+
+        sm.save_schedule(schedule, schedule_path)
+        return JSONResponse({
+            "deleted": [d.isoformat() for d in deleted_dates],
+            "count": len(deleted_dates)
+        })
 
 
     @app.post("/actions/{date}")

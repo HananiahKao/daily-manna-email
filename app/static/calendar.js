@@ -168,6 +168,15 @@
           this.submitPopover();
         });
       }
+      const deleteBtn = this.popoverEl.querySelector(
+        '[data-action="delete"]',
+      );
+      if (deleteBtn) {
+        deleteBtn.addEventListener("click", (event) => {
+          event.preventDefault();
+          this.handleDelete();
+        });
+      }
       document.addEventListener("click", (event) => {
         if (this.popoverEl.hidden) {
           return;
@@ -238,6 +247,14 @@
           this.hideBatchEditOverlay();
         });
       });
+
+      const deleteBtn = overlay.querySelector('[data-action="batch-delete"]');
+      if (deleteBtn) {
+        deleteBtn.addEventListener("click", (event) => {
+          event.preventDefault();
+          this.handleBatchDelete();
+        });
+      }
     }
 
     bindGlobalKeys() {
@@ -956,6 +973,24 @@
       }
     }
 
+    async handleDelete() {
+      const date = this.popoverDateInput?.value;
+      if (!date) {
+        return;
+      }
+      if (!confirm(`Are you sure you want to delete the entry for ${this.fullFormatter.format(parseISODate(date))}?`)) {
+        return;
+      }
+      try {
+        await this.jsonFetch(`/api/entry/${date}`, null, "DELETE");
+        this.closePopover();
+        this.showFlash("success", "Entry deleted.");
+        await this.refreshFocusedMonth();
+      } catch (error) {
+        this.showFlash("error", error.message || "Unable to delete entry");
+      }
+    }
+
     openPopover(date, anchor, resetOnly = false) {
       if (!this.popoverEl) {
         return;
@@ -1144,6 +1179,29 @@
         await this.refreshFocusedMonth();
       } catch (error) {
         this.showFlash("error", error.message || "Unable to update entries");
+      }
+    }
+
+    async handleBatchDelete() {
+      if (!this.selection.size) {
+        return;
+      }
+      const dates = Array.from(this.selection).sort();
+      const count = dates.length;
+
+      if (!confirm(`Are you sure you want to delete ${count} selected ${count === 1 ? 'entry' : 'entries'}?`)) {
+        return;
+      }
+
+      try {
+        const result = await this.jsonFetch("/api/entries/batch-delete", dates);
+        this.hideBatchEditOverlay();
+        this.selection.clear();
+        this.updateSelectionClasses();
+        this.showFlash("success", `Deleted ${result.count} ${result.count === 1 ? 'entry' : 'entries'}.`);
+        await this.refreshFocusedMonth();
+      } catch (error) {
+        this.showFlash("error", error.message || "Unable to delete entries");
       }
     }
 

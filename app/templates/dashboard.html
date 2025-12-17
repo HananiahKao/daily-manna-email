@@ -66,6 +66,7 @@
         <button type="submit" class="primary">Save</button>
         <button type="button" data-action="mark-sent">Mark sent</button>
         <button type="button" data-action="mark-skipped">Mark skipped</button>
+        <button type="button" data-action="delete" class="danger">Delete</button>
       </div>
       <button type="button" data-action="close">Cancel</button>
     </div>
@@ -115,7 +116,10 @@
       <small>Leave blank to keep existing values</small>
     </div>
     <div class="overlay-actions">
-      <button type="submit" class="primary">Apply to All</button>
+      <div class="overlay-action-group">
+        <button type="submit" class="primary">Apply to All</button>
+        <button type="button" data-action="batch-delete" class="danger">Delete Events</button>
+      </div>
       <button type="button" data-action="cancel">Cancel</button>
     </div>
   </form>

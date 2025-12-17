@@ -109,3 +109,76 @@ def test_move_action_rejects_conflict(dashboard_client):
     entry = schedule.get_entry(base_date)
     assert entry is not None
     assert entry.date == base_date
+
+
+def test_delete_entry_api(dashboard_client):
+    client, schedule_path, base_date = dashboard_client
+
+    # Verify entry exists before deletion
+    schedule = sm.load_schedule(schedule_path)
+    original_entry = schedule.get_entry(base_date)
+    assert original_entry is not None
+
+    # Delete the entry
+    response = client.delete(f"/api/entry/{base_date.isoformat()}", headers=_auth_header())
+    assert response.status_code == 200
+    data = response.json()
+    assert data == {"deleted": True, "date": base_date.isoformat()}
+
+    # Verify entry is gone
+    schedule = sm.load_schedule(schedule_path)
+    assert schedule.get_entry(base_date) is None
+
+    # Try to delete same entry again - should get 404
+    response = client.delete(f"/api/entry/{base_date.isoformat()}", headers=_auth_header())
+    assert response.status_code == 404
+
+
+def test_batch_delete_entries_api(dashboard_client):
+    client, schedule_path, base_date = dashboard_client
+
+    # Add multiple entries to test batch delete
+    additional_dates = [
+        base_date + dt.timedelta(days=i) for i in range(1, 4)  # 3 more entries
+    ]
+    schedule = sm.load_schedule(schedule_path)
+    for additional_date in additional_dates:
+        schedule.upsert_entry(sm.ScheduleEntry(date=additional_date, selector="2-10-1"))
+    sm.save_schedule(schedule, schedule_path)
+
+    # Verify all entries exist
+    schedule = sm.load_schedule(schedule_path)
+    all_dates = [base_date] + additional_dates
+    for date in all_dates:
+        assert schedule.get_entry(date) is not None
+
+    # Delete first 2 entries
+    dates_to_delete = all_dates[:2]
+    response = client.post(
+        "/api/entries/batch-delete",
+        headers=_auth_header(),
+        json=[d.isoformat() for d in dates_to_delete]
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data == {
+        "deleted": sorted([d.isoformat() for d in dates_to_delete]),
+        "count": len(dates_to_delete)
+    }
+
+    # Verify entries are gone
+    schedule = sm.load_schedule(schedule_path)
+    for date in dates_to_delete:
+        assert schedule.get_entry(date) is None
+
+    # Verify remaining entries still exist
+    for date in all_dates[2:]:
+        assert schedule.get_entry(date) is not None
+
+    # Try to delete non-existent entries - should get 404
+    response = client.post(
+        "/api/entries/batch-delete",
+        headers=_auth_header(),
+        json=[d.isoformat() for d in dates_to_delete]  # These were already deleted
+    )
+    assert response.status_code == 404

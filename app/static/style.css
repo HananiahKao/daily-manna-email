@@ -412,6 +412,7 @@ body {
   padding: 0.45rem 0.8rem;
   cursor: pointer;
   font-weight: 600;
+  transition: background 0.2s ease, transform 0.1s ease;
 }
 
 .popover-actions .primary {
@@ -537,6 +538,12 @@ body {
 .overlay-actions button:not(.primary) {
   background: #e5e7eb;
   color: #111827;
+}
+
+.overlay-actions button.danger,
+.popover-actions button.danger {
+  background: #dc2626;
+  color: #ffffff;
 }
 
 kbd {
