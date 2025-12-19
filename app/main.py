@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 from pathlib import Path
+import subprocess
 import sys
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
@@ -94,6 +95,30 @@ class BatchSelectorParsePayload(BaseModel):
     input_text: str
 
 
+def git_last_modified_date(file_path: str) -> str:
+    """
+    Get the last commit date for a file from Git, formatted as 'Month DD, YYYY'.
+
+    Falls back to current date if Git is not available or file has no commits.
+    """
+    try:
+        # Run git log command to get the last commit date
+        result = subprocess.run(
+            ['git', 'log', '-1', '--format=%ad', '--date=format:%B %d, %Y', '--', file_path],
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_ROOT,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (subprocess.SubprocessError, FileNotFoundError, subprocess.TimeoutExpired):
+        # Git not available or command failed
+        pass
+
+    # Fallback to current date if Git fails
+    return dt.datetime.now().strftime("%B %d, %Y")
+
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Daily Manna Dashboard")
@@ -103,9 +128,8 @@ def create_app() -> FastAPI:
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
-    # Add datetime to template globals
-    import datetime
-    templates.env.globals['now'] = datetime.datetime.now
+    # Add function to template globals
+    templates.env.globals['git_last_modified_date'] = git_last_modified_date
 
     @app.get("/healthz")
     def healthz() -> JSONResponse:

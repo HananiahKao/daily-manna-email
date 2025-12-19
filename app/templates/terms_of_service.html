@@ -4,7 +4,7 @@
 <section class="terms-of-service">
   <h1>Terms of Service</h1>
 
-  <p><em>Last updated: {{ now().strftime("%B %d, %Y") }}</em></p>
+  <p><em>Last updated: {{ git_last_modified_date('app/templates/terms_of_service.html') }}</em></p>
 
   <h2>Acceptance of Terms</h2>
   <p>By using the Daily Manna Email service, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use this service.</p>
