@@ -103,6 +103,10 @@ def create_app() -> FastAPI:
 
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+    # Add datetime to template globals
+    import datetime
+    templates.env.globals['now'] = datetime.datetime.now
+
     @app.get("/healthz")
     def healthz() -> JSONResponse:
         return JSONResponse({"status": "ok"})
