@@ -9,10 +9,12 @@ import sys
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
+import secrets
 from pydantic import BaseModel, validator
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -24,7 +26,7 @@ import schedule_manager as sm
 import content_source_factory
 
 from app.config import AppConfig, get_config
-from app.security import require_user
+from app.security import require_user, authenticate_user, login_required
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -123,6 +125,9 @@ def git_last_modified_date(file_path: str) -> str:
 def create_app() -> FastAPI:
     app = FastAPI(title="Daily Manna Dashboard")
 
+    # Add session middleware
+    app.add_middleware(SessionMiddleware, secret_key=secrets.token_hex(32))
+
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -143,12 +148,45 @@ def create_app() -> FastAPI:
     def terms_of_service(request: Request) -> HTMLResponse:
         return templates.TemplateResponse(request, "terms_of_service.html")
 
-    @app.get("/", response_class=HTMLResponse, name="dashboard")
+    @app.get("/", name="root")
+    def root(request: Request) -> Response:
+        """Root route - show login page or redirect to dashboard."""
+        user = login_required(request)
+        if user:
+            return RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+
+        templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+        return templates.TemplateResponse(request, "login.html")
+
+    @app.post("/login")
+    def login(
+        request: Request,
+        username: str = Form(...),
+        password: str = Form(...),
+    ) -> Response:
+        if authenticate_user(username, password):
+            request.session["user"] = username
+            return RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+        else:
+            templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+            return templates.TemplateResponse(
+                request,
+                "login.html",
+                {"error": "Invalid credentials"},
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+
+    @app.post("/logout")
+    def logout(request: Request) -> RedirectResponse:
+        request.session.clear()
+        return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+
+    @app.get("/dashboard", response_class=HTMLResponse, name="dashboard")
     def dashboard(
         request: Request,
-        _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> HTMLResponse:
+        require_user(request)
         schedule_path = _resolve_schedule_path(settings)
         schedule = sm.load_schedule(schedule_path)
 

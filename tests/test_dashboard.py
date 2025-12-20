@@ -42,14 +42,13 @@ def dashboard_client(monkeypatch, tmp_path):
 
 def test_dashboard_requires_auth(dashboard_client):
     client, _path, _date = dashboard_client
-    response = client.get("/")
+    response = client.get("/dashboard")
     assert response.status_code == 401
-    assert "WWW-Authenticate" in response.headers
 
 
 def test_dashboard_renders_schedule(dashboard_client):
     client, schedule_path, base_date = dashboard_client
-    response = client.get("/", headers=_auth_header())
+    response = client.get("/dashboard", headers=_auth_header())
     assert response.status_code == 200
     
     # Check that the calendar data is available via API
