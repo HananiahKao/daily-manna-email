@@ -123,7 +123,7 @@ def git_last_modified_date(file_path: str) -> str:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Daily Manna Dashboard")
+    app = FastAPI(title="Daily Manna Email")
 
     # Add session middleware
     app.add_middleware(SessionMiddleware, secret_key=secrets.token_hex(32))
@@ -150,11 +150,13 @@ def create_app() -> FastAPI:
 
     @app.get("/", name="root")
     def root(request: Request) -> Response:
-        """Root route - show login page or redirect to dashboard."""
-        user = login_required(request)
-        if user:
-            return RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+        """Root route - show public home page."""
+        templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+        return templates.TemplateResponse(request, "home.html")
 
+    @app.get("/login-form", response_class=HTMLResponse)
+    def login_page(request: Request) -> HTMLResponse:
+        """Show login form."""
         templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
         return templates.TemplateResponse(request, "login.html")
 
