@@ -7,10 +7,23 @@
   {% endif %}
   {% if error %}
     <div class="flash error" data-type="error">{{ error }}</div>
+    {% if request.query_params.get('action') == 'manage_permissions' %}
+      <div class="flash info" data-type="info">
+        <a href="https://myaccount.google.com/permissions" target="_blank" class="manage-permissions-link">
+          Manage Google Account Permissions →
+        </a>
+      </div>
+    {% endif %}
   {% endif %}
 </section>
 <section class="summary">
   <p>Schedule file: <code>{{ schedule_path }}</code></p>
+</section>
+<section id="oauth-section" class="oauth-status">
+  <h3>Email Authorization</h3>
+  <div id="oauth-status">
+    <p class="oauth-loading">Checking authorization status...</p>
+  </div>
 </section>
 <section class="calendar-shell">
   <header class="calendar-toolbar">
@@ -133,6 +146,73 @@
     message: null,
     error: null
   };
+
+  // OAuth status management
+  async function checkOAuthStatus() {
+    const statusDiv = document.getElementById('oauth-status');
+    try {
+      const response = await fetch('/oauth/status');
+      if (!response.ok) {
+        throw new Error('Failed to check OAuth status');
+      }
+      const data = await response.json();
+
+      if (data.authorized && data.scope_status === 'exact') {
+        statusDiv.innerHTML = `
+          <p class="oauth-authorized">
+            ✓ You have authorized the app to use your email
+          </p>
+        `;
+      } else if (data.authorized && data.scope_status === 'over-authorized') {
+        const extraScopesDescriptions = data.extra_scopes_descriptions || [];
+        statusDiv.innerHTML = `
+          <div class="oauth-over-authorized">
+            <p>✓ Authorized with additional permissions</p>
+            <p style="font-size: 0.9em; color: #6b7280; margin: 0.5rem 0;">
+              Additional permissions: ${extraScopesDescriptions.join(', ')}
+            </p>
+            <p style="font-size: 0.9em; color: #6b7280; margin: 0.5rem 0 1rem;">
+              To use only required permissions, revoke and re-authorize.
+            </p>
+            <a href="https://myaccount.google.com/permissions" target="_blank" class="oauth-manage-btn">
+              Manage Google Account Permissions
+            </a>
+          </div>
+        `;
+      } else if (!data.authorized && data.status === 'insufficient') {
+        // Token exists but missing required scopes
+        const missingScopesDescriptions = data.missing_scopes_descriptions || [];
+        const missingList = missingScopesDescriptions.length > 0 ? ` (${missingScopesDescriptions.join(', ')})` : '';
+        statusDiv.innerHTML = `
+          <div class="oauth-under-authorized">
+            <p>❌ Email authorization incomplete - missing required permissions${missingList}</p>
+            <a href="/oauth/start" class="oauth-grant-btn">Grant Required Access</a>
+          </div>
+        `;
+      } else {
+        // No token at all or other unauthorized states
+        statusDiv.innerHTML = `
+          <div class="oauth-unauthorized">
+            <p>Email authorization required to send emails</p>
+            <a href="/oauth/start" class="oauth-grant-btn">Grant Email Access</a>
+          </div>
+        `;
+      }
+    } catch (error) {
+      console.error('OAuth status check failed:', error);
+      statusDiv.innerHTML = `
+        <div class="oauth-unauthorized">
+          <p>Unable to check authorization status</p>
+          <a href="/oauth/start" class="oauth-grant-btn">Grant Email Access</a>
+        </div>
+      `;
+    }
+  }
+
+  // Check OAuth status when page loads
+  document.addEventListener('DOMContentLoaded', function() {
+    checkOAuthStatus();
+  });
 </script>
 <script src="/static/calendar.js" defer></script>
 {% endblock %}

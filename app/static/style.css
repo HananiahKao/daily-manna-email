@@ -57,6 +57,22 @@ body {
   color: #b91c1c;
 }
 
+.flash.info {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.manage-permissions-link {
+  color: #1e40af;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.manage-permissions-link:hover {
+  color: #1d4ed8;
+}
+
 .calendar-shell {
   margin-top: 1.5rem;
   background: #ffffff;
@@ -847,6 +863,138 @@ kbd {
 
 .login-button:active {
   transform: scale(0.98);
+}
+
+/* OAuth Status Section */
+.oauth-status {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e5e7eb;
+}
+
+.oauth-status h3 {
+  margin: 0 0 1rem 0;
+  color: #111827;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.oauth-loading {
+  margin: 0;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.oauth-authorized {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  color: #059669;
+  font-weight: 500;
+}
+
+.oauth-authorized:before {
+  content: "✓";
+  background: #059669;
+  color: #ffffff;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.oauth-unauthorized {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0;
+}
+
+.oauth-unauthorized p {
+  margin: 0;
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.oauth-grant-btn {
+  background: #4f46e5;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  transition: background 0.2s ease, transform 0.1s ease;
+  align-self: flex-start;
+}
+
+.oauth-grant-btn:hover {
+  background: #4338ca;
+}
+
+.oauth-grant-btn:active {
+  transform: scale(0.98);
+}
+
+.oauth-over-authorized {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.oauth-over-authorized p:first-child {
+  color: #d97706;
+  font-weight: 500;
+  margin: 0;
+}
+
+.oauth-manage-btn {
+  background: #f59e0b;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  transition: background 0.2s ease, transform 0.1s ease;
+  align-self: flex-start;
+}
+
+.oauth-manage-btn:hover {
+  background: #d97706;
+  color: #ffffff;
+}
+
+.oauth-manage-btn:active {
+  transform: scale(0.98);
+}
+
+.oauth-under-authorized {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0;
+}
+
+.oauth-under-authorized p {
+  margin: 0;
+  color: #dc2626;
+  font-weight: 500;
 }
 
 /* Logout Button Styles */

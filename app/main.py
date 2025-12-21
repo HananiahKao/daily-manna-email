@@ -8,6 +8,9 @@ import subprocess
 import sys
 from typing import Dict, List, Optional
 from urllib.parse import urlencode
+import os
+import json
+import requests
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -16,6 +19,9 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 import secrets
 from pydantic import BaseModel, validator
+from google_auth_oauthlib.flow import Flow
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request as GoogleRequest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # Ensure modules at the repo root (e.g. schedule_manager) remain importable when uvicorn sets --app-dir
@@ -27,6 +33,7 @@ import content_source_factory
 
 from app.config import AppConfig, get_config
 from app.security import require_user, authenticate_user, login_required
+from app.oauth_scopes import get_scopes_descriptions
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -182,6 +189,228 @@ def create_app() -> FastAPI:
     def logout(request: Request) -> RedirectResponse:
         request.session.clear()
         return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+
+    @app.get("/oauth/status", response_class=JSONResponse)
+    def oauth_status(_: str = Depends(require_user)) -> JSONResponse:
+        """Check OAuth token status and scope information using Google tokeninfo API."""
+        token_path = PROJECT_ROOT / "token.json"
+        required_scopes = {
+            'https://www.googleapis.com/auth/gmail.send',
+            'https://www.googleapis.com/auth/gmail.readonly'
+        }
+
+        try:
+            if not token_path.exists():
+                return JSONResponse({
+                    "authorized": False,
+                    "status": "unauthorized",
+                    "message": "No OAuth tokens found",
+                    "scope_status": "none"
+                })
+
+            # Load credentials from file
+            creds = Credentials.from_authorized_user_file(str(token_path), scopes=None)
+            if not creds.token:
+                return JSONResponse({
+                    "authorized": False,
+                    "status": "invalid",
+                    "message": "No access token found in credentials",
+                    "scope_status": "unknown"
+                })
+
+            # Query Google tokeninfo API for authoritative validation
+            tokeninfo_url = f"https://oauth2.googleapis.com/tokeninfo?access_token={creds.token}"
+            response = requests.get(tokeninfo_url, timeout=10)
+            tokeninfo_data = response.json()
+
+            # Check if token is invalid according to Google
+            if response.status_code == 400 and tokeninfo_data.get("error") == "invalid_token":
+                return JSONResponse({
+                    "authorized": False,
+                    "status": "revoked",
+                    "message": "OAuth token has been revoked or is invalid",
+                    "scope_status": "none"
+                })
+
+            # Check for other tokeninfo errors
+            if response.status_code != 200:
+                return JSONResponse({
+                    "authorized": False,
+                    "status": "error",
+                    "message": f"Tokeninfo API error: {tokeninfo_data.get('error', 'Unknown error')}",
+                    "scope_status": "unknown"
+                })
+
+            # Parse granted scopes from tokeninfo response
+            scope_str = tokeninfo_data.get("scope", "")
+            granted_scopes = set(scope_str.split()) if scope_str else set()
+
+            # Determine scope status
+            extra_scopes = set()
+            missing_scopes = set()
+
+            if granted_scopes == required_scopes:
+                scope_status = "exact"
+            elif required_scopes.issubset(granted_scopes):
+                scope_status = "over-authorized"
+                extra_scopes = granted_scopes - required_scopes
+            else:
+                scope_status = "under-authorized"
+                missing_scopes = required_scopes - granted_scopes
+
+            response_data = {
+                "authorized": True,
+                "status": "authorized",
+                "message": "OAuth tokens valid",
+                "scope_status": scope_status
+            }
+
+            if scope_status == "over-authorized":
+                response_data["extra_scopes"] = list(extra_scopes)
+                response_data["extra_scopes_descriptions"] = get_scopes_descriptions(list(extra_scopes))
+                response_data["message"] = "OAuth tokens valid with additional permissions"
+            elif scope_status == "under-authorized":
+                response_data["missing_scopes"] = list(missing_scopes)
+                response_data["missing_scopes_descriptions"] = get_scopes_descriptions(list(missing_scopes))
+                response_data["authorized"] = False
+                response_data["status"] = "insufficient"
+                response_data["message"] = "OAuth tokens missing required permissions"
+
+            return JSONResponse(response_data)
+
+        except requests.exceptions.RequestException as e:
+            return JSONResponse({
+                "authorized": False,
+                "status": "error",
+                "message": f"Network error checking token status: {str(e)}",
+                "scope_status": "unknown"
+            })
+        except Exception as e:
+            return JSONResponse({
+                "authorized": False,
+                "status": "error",
+                "message": f"Error checking OAuth status: {str(e)}",
+                "scope_status": "unknown"
+            })
+
+    @app.get("/oauth/start")
+    def oauth_start(request: Request, _: str = Depends(require_user)) -> RedirectResponse:
+        """Initiate OAuth flow."""
+        client_secret_path = PROJECT_ROOT / "client_secret.json"
+        if not client_secret_path.exists():
+            return RedirectResponse(
+                url=f"/dashboard?error=OAuth client secret not found. Please upload client_secret.json",
+                status_code=status.HTTP_302_FOUND
+            )
+
+        try:
+            flow = Flow.from_client_secrets_file(
+                str(client_secret_path),
+                scopes=[
+                    'https://www.googleapis.com/auth/gmail.send',
+                    'https://www.googleapis.com/auth/gmail.readonly'
+                ],
+                redirect_uri=request.url_for('oauth_callback')
+            )
+
+            authorization_url, state = flow.authorization_url(
+                access_type='offline',
+                include_granted_scopes='true',
+                prompt='consent'
+            )
+
+            # Store state in session for CSRF protection
+            request.session['oauth_state'] = state
+
+            return RedirectResponse(url=authorization_url)
+        except Exception as e:
+            return RedirectResponse(
+                url=f"/dashboard?error=Failed to start OAuth flow: {str(e)}",
+                status_code=status.HTTP_302_FOUND
+            )
+
+    @app.get("/oauth/callback")
+    def oauth_callback(
+        request: Request,
+        code: Optional[str] = None,
+        state: Optional[str] = None,
+        error: Optional[str] = None
+    ) -> RedirectResponse:
+        """Handle OAuth callback."""
+        require_user(request)
+
+        # Check if user denied authorization
+        if error == "access_denied":
+            # Clear state from session
+            request.session.pop('oauth_state', None)
+            return RedirectResponse(
+                url="/dashboard?error=Authorization was denied. Please try again if you want to grant access.",
+                status_code=status.HTTP_302_FOUND
+            )
+
+        # Verify we have required parameters for successful authorization
+        if not code or not state:
+            return RedirectResponse(
+                url="/dashboard?error=Missing authorization parameters",
+                status_code=status.HTTP_302_FOUND
+            )
+
+        # Verify state for CSRF protection
+        stored_state = request.session.get('oauth_state')
+        if not stored_state or state != stored_state:
+            return RedirectResponse(
+                url="/dashboard?error=OAuth state mismatch - possible CSRF attack",
+                status_code=status.HTTP_302_FOUND
+            )
+
+        client_secret_path = PROJECT_ROOT / "client_secret.json"
+        if not client_secret_path.exists():
+            return RedirectResponse(
+                url="/dashboard?error=OAuth client secret not found",
+                status_code=status.HTTP_302_FOUND
+            )
+
+        try:
+            # Create flow without strict scope validation to handle scope mismatches
+            flow = Flow.from_client_secrets_file(
+                str(client_secret_path),
+                scopes=[
+                    'https://www.googleapis.com/auth/gmail.send',
+                    'https://www.googleapis.com/auth/gmail.readonly'
+                ],
+                redirect_uri=request.url_for('oauth_callback')
+            )
+
+            # Use the authorization code to fetch tokens
+            # We handle scope validation ourselves after token retrieval
+            flow.fetch_token(code=code)
+
+            # Store credentials
+            creds = flow.credentials
+            token_path = PROJECT_ROOT / "token.json"
+            with open(token_path, 'w') as token_file:
+                token_file.write(creds.to_json())
+
+            # Clear state from session
+            request.session.pop('oauth_state', None)
+
+            return RedirectResponse(
+                url="/dashboard?message=OAuth authorization successful",
+                status_code=status.HTTP_302_FOUND
+            )
+        except Exception as e:
+            error_msg = str(e)
+            # Check if this is a scope mismatch error
+            if "Scope has changed" in error_msg:
+                return RedirectResponse(
+                    url="/dashboard?error=Permissions granted did not match the request. Please try again.&action=manage_permissions",
+                    status_code=status.HTTP_302_FOUND
+                )
+            else:
+                return RedirectResponse(
+                    url=f"/dashboard?error=OAuth authorization failed: {error_msg}",
+                    status_code=status.HTTP_302_FOUND
+                )
 
     @app.get("/dashboard", response_class=HTMLResponse, name="dashboard")
     def dashboard(

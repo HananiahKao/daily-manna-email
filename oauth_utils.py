@@ -23,8 +23,10 @@ TOKEN_FILE = 'token.json'
 def get_credentials():
     """
     Handles the OAuth 2.0 flow to get valid credentials.
-    It checks for an existing token, refreshes it if expired, or initiates
-    the flow for a new token if none exists.
+    It checks for an existing token, refreshes it if expired.
+    If no valid token exists, raises an exception instead of prompting for OAuth.
+    This function is designed for use in automated scripts that should fail fast
+    when OAuth is not configured via the web interface.
     """
     creds = None
 
@@ -33,49 +35,23 @@ def get_credentials():
         try:
             creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
         except (ValueError, json.decoder.JSONDecodeError) as e:
-            print(f"Error loading token from {TOKEN_FILE}: {e}. Will initiate new OAuth flow.")
-            creds = None
+            raise RuntimeError(f"Error loading token from {TOKEN_FILE}: {e}. Please re-authorize via the web dashboard.")
 
     # 2. Refresh token if expired
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            print("Refreshing access token...")
             try:
                 creds.refresh(Request())
+                # Save refreshed credentials
+                with open(TOKEN_FILE, 'w') as token:
+                    token.write(creds.to_json())
             except Exception as e:
-                print(f"Error refreshing token: {e}")
-                creds = None # Force a new flow if refresh fails
-
-        if not creds or not creds.valid:
-            # 3. Get new token if none exists or refresh failed
-            print("Initiating new OAuth 2.0 flow. User interaction required.")
-            if not Path(CLIENT_SECRET_FILE).exists():
-                print(f"Error: {CLIENT_SECRET_FILE} not found.")
-                print("Please ensure you have uploaded the client_secret.json file.")
-                sys.exit(1)
-
-            # Use the manual authorization flow since a runnable browser is not available.
-            # We must explicitly set the redirect_uri to 'urn:ietf:wg:oauth:2.0:oob' for the manual flow.
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CLIENT_SECRET_FILE, SCOPES, redirect_uri='urn:ietf:wg:oauth:2.0:oob')
-
-            auth_url, _ = flow.authorization_url(prompt='consent')
-            print("\n*** USER INTERACTION REQUIRED ***")
-            print("Please visit this URL in your browser to grant access:")
-            print(auth_url)
-            print("Then, paste the authorization code from the browser into the next prompt.")
-
-            # Prompt for the authorization code
-            auth_code = input("Enter the authorization code: ").strip()
-
-            # Fetch the token using the code
-            flow.fetch_token(code=auth_code)
-            creds = flow.credentials
-
-            # Save the credentials for the next run
-            with open(TOKEN_FILE, 'w') as token:
-                token.write(creds.to_json())
-            print(f"New token saved to {TOKEN_FILE}.")
+                raise RuntimeError(f"Error refreshing OAuth token: {e}. Please re-authorize via the web dashboard.")
+        else:
+            # No valid credentials - fail fast instead of prompting
+            raise RuntimeError(
+                "No valid OAuth credentials found. Please authorize the application via the web dashboard at /oauth/start"
+            )
 
     return creds
 
