@@ -157,6 +157,9 @@
       }
       const data = await response.json();
 
+      // Debug logging for OAuth status (remove in production)
+      // console.log('OAuth status response:', data);
+
       if (data.authorized && data.scope_status === 'exact') {
         statusDiv.innerHTML = `
           <p class="oauth-authorized">
@@ -179,7 +182,7 @@
             </a>
           </div>
         `;
-      } else if (!data.authorized && data.status === 'insufficient') {
+      } else if (data.scope_status === 'under-authorized' || (data.missing_scopes && data.missing_scopes.length > 0)) {
         // Token exists but missing required scopes
         const missingScopesDescriptions = data.missing_scopes_descriptions || [];
         const missingList = missingScopesDescriptions.length > 0 ? ` (${missingScopesDescriptions.join(', ')})` : '';
