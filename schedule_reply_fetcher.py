@@ -77,11 +77,7 @@ def extract_text_body(message: EmailMessage) -> str:
 
 @dataclass
 class ImapConfig:
-    host: str
-    port: int
     username: str
-    password: str  # Kept for compatibility, but not used for login anymore
-    mailbox: str
     allowed_senders: List[str]
     confirmation_recipients: List[str]
     subject_keyword: str
@@ -92,15 +88,6 @@ class ImapConfig:
         username = os.getenv("IMAP_USER") or os.getenv("SMTP_USER")
         if not username:
             raise RuntimeError("Username is required (IMAP_USER or SMTP_USER)")
-        # Keep password for compatibility but it's not used with Gmail API
-        password = os.getenv("IMAP_PASSWORD") or os.getenv("SMTP_PASSWORD") or "dummy_password"
-        host = os.getenv("IMAP_HOST", DEFAULT_IMAP_HOST)
-        port_raw = os.getenv("IMAP_PORT")
-        try:
-            port = int(port_raw) if port_raw else DEFAULT_IMAP_PORT
-        except ValueError as exc:
-            raise RuntimeError("IMAP_PORT must be an integer") from exc
-        mailbox = os.getenv("IMAP_MAILBOX", "INBOX")
         prefix = os.getenv("ADMIN_SUMMARY_SUBJECT_PREFIX", "[DailyManna]")
         keyword = os.getenv("ADMIN_REPLY_SUBJECT_KEYWORD", DEFAULT_SUBJECT_KEYWORD)
         allowed = _parse_address_list(os.getenv("ADMIN_REPLY_FROM"))
@@ -114,11 +101,7 @@ class ImapConfig:
         if not recipients:
             raise RuntimeError("ADMIN_REPLY_CONFIRMATION_TO or ADMIN_SUMMARY_TO must provide recipients")
         return cls(
-            host=host,
-            port=port,
             username=username,
-            password=password,
-            mailbox=mailbox,
             allowed_senders=allowed,
             confirmation_recipients=recipients,
             subject_keyword=keyword,
@@ -218,14 +201,7 @@ def _should_accept(message: EmailMessage, allowed_senders: Sequence[str], subjec
     return True
 
 
-def _build_search_criteria(config: ImapConfig) -> Tuple[str, ...]:
-    criteria: List[str] = ["UNSEEN"]
-    if config.allowed_senders:
-        sender = config.allowed_senders[0]
-        criteria.append(f'FROM "{sender}"')
-    if config.subject_keyword:
-        criteria.append(f'SUBJECT "{config.subject_keyword}"')
-    return tuple(criteria)
+
 
 
 def build_confirmation_email(
@@ -319,30 +295,7 @@ def _send_admin_email(recipients: Sequence[str], subject: str, text_body: str, h
                 os.environ["EMAIL_FROM"] = original_email_from
 
 
-def _mark_seen(imap: imaplib.IMAP4_SSL, uid: bytes, dry_run: bool) -> None:
-    if dry_run:
-        return
-    try:
-        imap.uid("STORE", uid, "+FLAGS", "(\\Seen)")
-    except Exception:  # pragma: no cover - IMAP errors are logged but not fatal
-        pass
 
-
-def _fetch_message(imap: imaplib.IMAP4_SSL, uid: bytes) -> Optional[EmailMessage]:
-    try:
-        status, payload = imap.uid("FETCH", uid, "(RFC822)")
-    except Exception:
-        return None
-    if status != "OK" or not payload:
-        return None
-    for part in payload:
-        if isinstance(part, tuple) and part[1]:
-            parser = BytesParser(policy=policy.default)
-            try:
-                return parser.parsebytes(part[1])
-            except Exception:
-                return None
-    return None
 
 
 def process_mailbox(

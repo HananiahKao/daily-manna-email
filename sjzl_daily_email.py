@@ -709,7 +709,7 @@ def run_once() -> int:
 
 
 if __name__ == "__main__":
-    required = ["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_TO"]
+    required = ["SMTP_USER", "EMAIL_TO"]
     missing = [k for k in required if not os.getenv(k)]
     if missing:
         sys.stderr.write(f"Missing required env vars: {', '.join(missing)}\n")

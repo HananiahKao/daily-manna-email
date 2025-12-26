@@ -46,7 +46,7 @@ All entrypoint scripts source `.env` before execution so SMTP/IMAP credentials a
 
 - `schedule_reply.py` issues short-lived reply tokens, embeds them in the weekly summary, and parses admin reply syntax (verbs: `keep`, `skip`, `move`, `selector`, `status`, `note`, `override`). Tokens live in `schedule.meta["reply_tokens"]`.
 - `schedule_reply_processor.py` applies parsed instructions onto the in-memory schedule, handling validation and producing per-token outcomes that drive confirmation emails and audit logs.
-- `schedule_reply_fetcher.py` connects to IMAP using `IMAP_*` and `ADMIN_*` variables, filters for allowed senders, extracts plain-text bodies, delegates to the processor, persists results to `state/last_reply_results.json`, and optionally sends confirmation emails via `sjzl_daily_email.send_email`.
+- `schedule_reply_fetcher.py` uses Gmail API with `ADMIN_*` variables, filters for allowed senders, extracts plain-text bodies, delegates to the processor, persists results to `state/last_reply_results.json`, and optionally sends confirmation emails via `sjzl_daily_email.send_email`.
 - `scripts/run_weekly_schedule_summary.sh` ensures the upcoming week exists (rolling forward using `EZOE_VOLUME`/`EZOE_LESSON`/`EZOE_DAY_START` seed env vars when needed), renders HTML + plain summaries, archives the HTML in `state/last_schedule_summary.html`, and emails admins when `ADMIN_SUMMARY_TO` is configured.
 - `scripts/process_schedule_replies.py` (invoked by `scripts/run_schedule_reply_processor.sh`) exposes CLI flags for batch size and dry runs when testing IMAP processing.
 - `app/main.py` exposes a FastAPI dashboard that reuses the schedule helpers for password-protected edits and acts as the landing page for weekly summary links.
@@ -64,7 +64,7 @@ All entrypoint scripts source `.env` before execution so SMTP/IMAP credentials a
 - **Content selection**: `EZOE_SELECTOR` (set automatically by the daily runner), `EZOE_BASE`, `SJZL_BASE`, `POLITE_DELAY_MS`.
 - **Email delivery**: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`, `EMAIL_TO`, `TLS_MODE`, `CONTENT_LANGUAGE`.
 - **Admin summaries**: `ADMIN_SUMMARY_TO`, `ADMIN_SUMMARY_FROM`, `ADMIN_SUMMARY_SUBJECT_PREFIX`.
-- **Admin replies/IMAP**: `IMAP_HOST`, `IMAP_PORT`, `IMAP_USER`, `IMAP_PASSWORD`, `IMAP_MAILBOX`, `ADMIN_REPLY_FROM`, `ADMIN_REPLY_SUBJECT_KEYWORD`, `ADMIN_REPLY_CONFIRMATION_TO`.
+- **Admin replies**: `ADMIN_REPLY_FROM`, `ADMIN_REPLY_SUBJECT_KEYWORD`, `ADMIN_REPLY_CONFIRMATION_TO`.
 
 All scripts expect these variables to be present in `.env`; the stateful runner automatically sources the file before invoking Python entrypoints.
 
@@ -72,7 +72,7 @@ All scripts expect these variables to be present in `.env`; the stateful runner 
 
 - **HTTP scraping**: `requests` + `BeautifulSoup` fetch lesson content from `four.soqimp.com` and `ezoe.work`.
 - **SMTP**: `smtplib` sends multipart emails to subscribers and admin recipients.
-- **IMAP**: `imaplib` downloads admin reply emails, using `email` package helpers for MIME parsing.
+- **Gmail API**: OAuth-authenticated access to Gmail for reading admin reply emails, using `email` package helpers for MIME parsing.
 
 ## Testing & Local Development Notes
 
