@@ -3,16 +3,23 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Daily Manna Dashboard{% endblock %}</title>
+    <meta name="google-site-verification" content="7DYeWbjxsZFrKp2FPjZ7Fe1ETBmMlxcrrhfmEym_qjg" />
+    <title>{% block title %}Daily Manna Email{% endblock %}</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap">
     <link rel="stylesheet" href="/static/style.css">
   </head>
   <body>
     <header class="page-header">
-      <h1><a href="/">Daily Manna Dashboard</a></h1>
+      <h1><a href="/">Daily Manna Email</a></h1>
     </header>
     <main class="page-content">
       {% block content %}{% endblock %}
     </main>
+    <footer class="page-footer">
+      <nav class="footer-nav">
+        <a href="/privacy-policy">Privacy Policy</a>
+        <a href="/terms-of-service">Terms of Service</a>
+      </nav>
+    </footer>
   </body>
 </html>

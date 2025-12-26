@@ -1,6 +1,6 @@
 # Deploying on PythonAnywhere
 
-These steps assume you have a **paid** PythonAnywhere account (cron multiples, always-on tasks, and unrestricted SMTP/IMAP require it).
+These steps assume you have a **paid** PythonAnywhere account (cron multiples, always-on tasks, and unrestricted email access require it).
 
 ## 1. Clone the repo & install dependencies
 
@@ -55,7 +55,7 @@ Use the dispatcher wrapper so one cron entry can drive all the automation.
 
 To customize timings/behaviour, create `state/dispatch_rules.json` with the format documented in `README.md`, then redeploy. For local testing, run `scripts/run_dispatcher.sh --dry-run`.
 
-## 4. Always-on task for IMAP replies
+## 4. Always-on task for Gmail API replies
 
 From the Tasks tab, create an **Always-on task** with the command:
 
@@ -63,7 +63,7 @@ From the Tasks tab, create an **Always-on task** with the command:
 bash -lc 'cd ~/daily-manna-email && scripts/run_schedule_reply_processor.sh --limit 10'
 ```
 
-It will poll IMAP hourly by default (set `DISPATCH_CONFIG`/`dispatch_rules` if you want to route it through the dispatcher instead). Always-on tasks auto-restart after maintenance and when CPU seconds reset.
+It will poll Gmail API hourly by default (set `DISPATCH_CONFIG`/`dispatch_rules` if you want to route it through the dispatcher instead). Always-on tasks auto-restart after maintenance and when CPU seconds reset.
 
 ## 5. Daily operations
 

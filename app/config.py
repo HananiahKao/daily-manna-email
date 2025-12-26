@@ -14,6 +14,7 @@ class AppConfig:
     admin_password: str
     schedule_file: Path | None
     timezone: str = "Asia/Taipei"
+    oauth_encryption_key: str | None = None
 
 
 @lru_cache(maxsize=1)
@@ -25,10 +26,11 @@ def get_config() -> AppConfig:
     schedule_file_raw = os.getenv("SCHEDULE_FILE")
     schedule_file = Path(schedule_file_raw).expanduser() if schedule_file_raw else None
     timezone = os.getenv("ADMIN_DASHBOARD_TIMEZONE", "Asia/Taipei")
+    oauth_encryption_key = os.getenv("OAUTH_ENCRYPTION_KEY")
     return AppConfig(
         admin_user=admin_user,
         admin_password=admin_password,
         schedule_file=schedule_file,
         timezone=timezone,
+        oauth_encryption_key=oauth_encryption_key,
     )
-

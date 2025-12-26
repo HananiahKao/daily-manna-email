@@ -10,23 +10,19 @@ Daily 'Shen Jing Zhi Li' fetcher and emailer.
 - Designed for cron/schedule; uses env vars for credentials/config.
 
 Env vars:
-  SMTP_HOST          e.g., smtp.gmail.com
-  SMTP_PORT          e.g., 587
-  SMTP_USER          your SMTP username (email)
-  SMTP_PASSWORD      your SMTP password or app password
+  SMTP_USER          your Gmail username (email)
   EMAIL_FROM         sender email (often same as SMTP_USER)
   EMAIL_TO           recipient email (comma-separated for multiple)
-  TLS_MODE           'starttls' (default) or 'ssl'
   SJZL_BASE          optional; default 'https://four.soqimp.com/books/2264'
 """
 
 import os
 import re
 import sys
-import smtplib
 import base64
-from oauth_utils import get_xoauth2_string
-import socket
+from oauth_utils import get_gmail_service
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import logging
 import datetime as dt
 from email.mime.text import MIMEText
@@ -450,63 +446,40 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
 
 def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -> None:
     """
-    Send email using SMTP with STARTTLS or SSL based on TLS_MODE.
+    Send email using Gmail API.
     """
-    smtp_host = os.environ["SMTP_HOST"]
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.environ["SMTP_USER"]
-    # smtp_pass is no longer needed, but we keep the variable for now to avoid breaking other parts
-    # that might use it, although the login part is removed.
-    smtp_pass = os.getenv("SMTP_PASSWORD", "")
-    email_from = os.getenv("EMAIL_FROM", smtp_user)
+    email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
     email_to_raw = os.environ["EMAIL_TO"]
     recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
-    tls_mode = os.getenv("TLS_MODE", "starttls").lower()
 
-    # Always send multipart/alternative so clients can choose best part
+    # Create message
     msg = MIMEMultipart("alternative")
     msg["From"] = email_from
     msg["To"] = ", ".join(recipients)
-    # RFC 2047 encode the subject to avoid mojibake in some clients
-    msg["Subject"] = str(Header(subject, "utf-8"))
-    # Optional language hint
+    msg["Subject"] = subject
     msg["Content-Language"] = os.getenv("CONTENT_LANGUAGE", "zh-Hant")
 
-    # Plain-text fallback part (let library choose safe encoding)
+    # Plain-text fallback part
     text_part = MIMEText(body, "plain", "utf-8")
     msg.attach(text_part)
-    # Optional HTML part for richer formatting
+
+    # Optional HTML part
     if html_body:
         html_part = MIMEText(html_body, "html", "utf-8")
-        # Let library choose transfer encoding to avoid duplicate headers
         msg.attach(html_part)
 
+    # Encode message for Gmail API
+    raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+
     try:
-        if tls_mode == "ssl":
-            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30)
-        else:
-            server = smtplib.SMTP(smtp_host, smtp_port, timeout=30)
-        with server:
-            if tls_mode == "starttls":
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-            # Use XOAUTH2 for authentication
-            xoauth2_string = None
-            if smtp_user:
-                xoauth2_string = get_xoauth2_string(smtp_user)
-            if xoauth2_string:
-                # SMTP XOAUTH2 expects base64 encoded auth string
-                b64_xoauth2_string = base64.b64encode(xoauth2_string.encode('utf-8')).decode('utf-8')
-                # Use docmd for AUTH XOAUTH2 command directly
-                response = server.docmd("AUTH", "XOAUTH2 " + b64_xoauth2_string)
-                if not response[0] == 235:  # 235 is success code for AUTH
-                    raise smtplib.SMTPAuthenticationError(response[0], response[1])
-            else:
-                raise RuntimeError("Failed to get XOAUTH2 string for SMTP authentication.")
-            server.sendmail(email_from, recipients, msg.as_string())
-    except (smtplib.SMTPException, socket.error) as e:
-        logger.error("Failed to send email: %s", e)
+        service = get_gmail_service()
+        message = {
+            'raw': raw_message
+        }
+        sent_message = service.users().messages().send(userId='me', body=message).execute()
+        logger.info("Email sent successfully, message ID: %s", sent_message.get('id'))
+    except Exception as e:
+        logger.error("Failed to send email via Gmail API: %s", e)
         raise
 
 
@@ -732,7 +705,7 @@ def run_once() -> int:
 
 
 if __name__ == "__main__":
-    required = ["SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "EMAIL_TO"]
+    required = ["SMTP_USER", "EMAIL_TO"]
     missing = [k for k in required if not os.getenv(k)]
     if missing:
         sys.stderr.write(f"Missing required env vars: {', '.join(missing)}\n")

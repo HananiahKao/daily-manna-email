@@ -4,74 +4,132 @@ import base64
 import imaplib
 import smtplib
 import sys
+import logging
 from pathlib import Path
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
 
-# Define the scope for full mail access, as the existing code uses both IMAP and SMTP
-# which often requires the full mail scope.
-SCOPES = ['https://mail.google.com/']
+logger = logging.getLogger(__name__)
+
+# Import token encryption utilities
+try:
+    from app.token_encryption import (
+        encrypt_token_data,
+        decrypt_token_data,
+        is_encrypted_data,
+        migrate_unencrypted_tokens,
+        TokenEncryptionError
+    )
+    ENCRYPTION_AVAILABLE = True
+except ImportError:
+    # Fallback if encryption module not available
+    logger.warning("Token encryption module not available, falling back to unencrypted tokens")
+    ENCRYPTION_AVAILABLE = False
+    encrypt_token_data = None
+    decrypt_token_data = None
+    is_encrypted_data = None
+    migrate_unencrypted_tokens = None
+    TokenEncryptionError = Exception
+
+# Define minimal scopes required for the application:
+# - gmail.send for sending messages via Gmail API
+# - gmail.readonly for reading messages via Gmail API
+SCOPES = [
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.readonly'
+]
 CLIENT_SECRET_FILE = 'client_secret.json'
 TOKEN_FILE = 'token.json'
+
+def _load_credentials_from_file():
+    """
+    Load credentials from token file, handling both encrypted and unencrypted formats.
+
+    Returns:
+        Credentials object or None if file doesn't exist or can't be loaded
+    """
+    if not Path(TOKEN_FILE).exists():
+        return None
+
+    try:
+        with open(TOKEN_FILE, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+
+        if not content:
+            return None
+
+        # Try encrypted format first if encryption is available
+        if ENCRYPTION_AVAILABLE and is_encrypted_data and is_encrypted_data(content):
+            try:
+                decrypted_data = decrypt_token_data(content)
+                return Credentials.from_authorized_user_info(decrypted_data, SCOPES)
+            except TokenEncryptionError as e:
+                logger.warning(f"Failed to decrypt token data: {e}. Trying unencrypted format.")
+                # Fall back to unencrypted
+                return Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+        else:
+            # Load as unencrypted JSON
+            return Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+
+    except (ValueError, json.decoder.JSONDecodeError, TokenEncryptionError) as e:
+        raise RuntimeError(f"Error loading token from {TOKEN_FILE}: {e}. Please re-authorize via the web dashboard.")
+
+
+def _save_credentials_to_file(creds):
+    """
+    Save credentials to token file in encrypted format if encryption is available.
+
+    Args:
+        creds: Credentials object to save
+    """
+    if ENCRYPTION_AVAILABLE and encrypt_token_data:
+        try:
+            # Convert to dict and encrypt
+            creds_dict = json.loads(creds.to_json())
+            encrypted_data = encrypt_token_data(creds_dict)
+            with open(TOKEN_FILE, 'w', encoding='utf-8') as f:
+                f.write(encrypted_data)
+        except TokenEncryptionError as e:
+            logger.error(f"Failed to encrypt credentials: {e}. Saving unencrypted.")
+            # Fall back to unencrypted
+            with open(TOKEN_FILE, 'w', encoding='utf-8') as f:
+                f.write(creds.to_json())
+    else:
+        # Save unencrypted
+        with open(TOKEN_FILE, 'w', encoding='utf-8') as f:
+            f.write(creds.to_json())
+
 
 def get_credentials():
     """
     Handles the OAuth 2.0 flow to get valid credentials.
-    It checks for an existing token, refreshes it if expired, or initiates
-    the flow for a new token if none exists.
+    It checks for an existing token, refreshes it if expired.
+    If no valid token exists, raises an exception instead of prompting for OAuth.
+    This function is designed for use in automated scripts that should fail fast
+    when OAuth is not configured via the web interface.
     """
     creds = None
-    
-    # 1. Load existing token
-    if Path(TOKEN_FILE).exists():
-        try:
-            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-        except (ValueError, json.decoder.JSONDecodeError) as e:
-            print(f"Error loading token from {TOKEN_FILE}: {e}. Will initiate new OAuth flow.")
-            creds = None
+
+    # 1. Load existing token (handles both encrypted and unencrypted)
+    creds = _load_credentials_from_file()
 
     # 2. Refresh token if expired
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            print("Refreshing access token...")
             try:
                 creds.refresh(Request())
+                # Save refreshed credentials (encrypted if available)
+                _save_credentials_to_file(creds)
             except Exception as e:
-                print(f"Error refreshing token: {e}")
-                creds = None # Force a new flow if refresh fails
-        
-        if not creds or not creds.valid:
-            # 3. Get new token if none exists or refresh failed
-            print("Initiating new OAuth 2.0 flow. User interaction required.")
-            if not Path(CLIENT_SECRET_FILE).exists():
-                print(f"Error: {CLIENT_SECRET_FILE} not found.")
-                print("Please ensure you have uploaded the client_secret.json file.")
-                sys.exit(1)
+                raise RuntimeError(f"Error refreshing OAuth token: {e}. Please re-authorize via the web dashboard.")
+        else:
+            # No valid credentials - fail fast instead of prompting
+            raise RuntimeError(
+                "No valid OAuth credentials found. Please authorize the application via the web dashboard at /oauth/start"
+            )
 
-            # Use the manual authorization flow since a runnable browser is not available.
-            # We must explicitly set the redirect_uri to 'urn:ietf:wg:oauth:2.0:oob' for the manual flow.
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CLIENT_SECRET_FILE, SCOPES, redirect_uri='urn:ietf:wg:oauth:2.0:oob')
-            
-            auth_url, _ = flow.authorization_url(prompt='consent')
-            print("\n*** USER INTERACTION REQUIRED ***")
-            print("Please visit this URL in your browser to grant access:")
-            print(auth_url)
-            print("Then, paste the authorization code from the browser into the next prompt.")
-
-            # Prompt for the authorization code
-            auth_code = input("Enter the authorization code: ").strip()
-
-            # Fetch the token using the code
-            flow.fetch_token(code=auth_code)
-            creds = flow.credentials
-
-            # Save the credentials for the next run
-            with open(TOKEN_FILE, 'w') as token:
-                token.write(creds.to_json())
-            print(f"New token saved to {TOKEN_FILE}.")
-    
     return creds
 
 def generate_xoauth2_string(email_address, access_token):
@@ -119,3 +177,13 @@ def imap_xoauth2_authenticate(imap_server, email_address):
             raise imaplib.IMAP4.error(f"IMAP XOAUTH2 authentication failed: {response}")
         return response
     raise ValueError("Could not get XOAUTH2 string for IMAP authentication.")
+
+
+def get_gmail_service():
+    """
+    Creates and returns a Gmail API service instance using OAuth credentials.
+    """
+    creds = get_credentials()
+    if not creds:
+        raise RuntimeError("Failed to obtain OAuth credentials for Gmail API")
+    return build('gmail', 'v1', credentials=creds)

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import datetime as dt
-import imaplib
-from oauth_utils import get_xoauth2_string
+import base64
+from oauth_utils import get_gmail_service
 import json
 import os
 from dataclasses import dataclass, field
@@ -77,11 +77,7 @@ def extract_text_body(message: EmailMessage) -> str:
 
 @dataclass
 class ImapConfig:
-    host: str
-    port: int
     username: str
-    password: str  # Kept for compatibility, but not used for login anymore
-    mailbox: str
     allowed_senders: List[str]
     confirmation_recipients: List[str]
     subject_keyword: str
@@ -90,16 +86,8 @@ class ImapConfig:
     @classmethod
     def from_env(cls) -> "ImapConfig":
         username = os.getenv("IMAP_USER") or os.getenv("SMTP_USER")
-        password = os.getenv("IMAP_PASSWORD") or os.getenv("SMTP_PASSWORD")
-        if not username or not password:
-            raise RuntimeError("IMAP credentials are required (IMAP_USER/IMAP_PASSWORD or SMTP_USER/SMTP_PASSWORD)")
-        host = os.getenv("IMAP_HOST", DEFAULT_IMAP_HOST)
-        port_raw = os.getenv("IMAP_PORT")
-        try:
-            port = int(port_raw) if port_raw else DEFAULT_IMAP_PORT
-        except ValueError as exc:
-            raise RuntimeError("IMAP_PORT must be an integer") from exc
-        mailbox = os.getenv("IMAP_MAILBOX", "INBOX")
+        if not username:
+            raise RuntimeError("Username is required (IMAP_USER or SMTP_USER)")
         prefix = os.getenv("ADMIN_SUMMARY_SUBJECT_PREFIX", "[DailyManna]")
         keyword = os.getenv("ADMIN_REPLY_SUBJECT_KEYWORD", DEFAULT_SUBJECT_KEYWORD)
         allowed = _parse_address_list(os.getenv("ADMIN_REPLY_FROM"))
@@ -113,11 +101,7 @@ class ImapConfig:
         if not recipients:
             raise RuntimeError("ADMIN_REPLY_CONFIRMATION_TO or ADMIN_SUMMARY_TO must provide recipients")
         return cls(
-            host=host,
-            port=port,
             username=username,
-            password=password,
-            mailbox=mailbox,
             allowed_senders=allowed,
             confirmation_recipients=recipients,
             subject_keyword=keyword,
@@ -217,14 +201,7 @@ def _should_accept(message: EmailMessage, allowed_senders: Sequence[str], subjec
     return True
 
 
-def _build_search_criteria(config: ImapConfig) -> Tuple[str, ...]:
-    criteria: List[str] = ["UNSEEN"]
-    if config.allowed_senders:
-        sender = config.allowed_senders[0]
-        criteria.append(f'FROM "{sender}"')
-    if config.subject_keyword:
-        criteria.append(f'SUBJECT "{config.subject_keyword}"')
-    return tuple(criteria)
+
 
 
 def build_confirmation_email(
@@ -318,30 +295,7 @@ def _send_admin_email(recipients: Sequence[str], subject: str, text_body: str, h
                 os.environ["EMAIL_FROM"] = original_email_from
 
 
-def _mark_seen(imap: imaplib.IMAP4_SSL, uid: bytes, dry_run: bool) -> None:
-    if dry_run:
-        return
-    try:
-        imap.uid("STORE", uid, "+FLAGS", "(\\Seen)")
-    except Exception:  # pragma: no cover - IMAP errors are logged but not fatal
-        pass
 
-
-def _fetch_message(imap: imaplib.IMAP4_SSL, uid: bytes) -> Optional[EmailMessage]:
-    try:
-        status, payload = imap.uid("FETCH", uid, "(RFC822)")
-    except Exception:
-        return None
-    if status != "OK" or not payload:
-        return None
-    for part in payload:
-        if isinstance(part, tuple) and part[1]:
-            parser = BytesParser(policy=policy.default)
-            try:
-                return parser.parsebytes(part[1])
-            except Exception:
-                return None
-    return None
 
 
 def process_mailbox(
@@ -355,44 +309,62 @@ def process_mailbox(
     schedule_path = schedule_path or sm.get_schedule_path()
     schedule = sm.load_schedule(schedule_path)
     summary = ProcessingSummary(run_at=now or dt.datetime.now(tz=sm.TAIWAN_TZ))
-    imap = imaplib.IMAP4_SSL(config.host, config.port)
 
-    # Use XOAUTH2 for authentication
-    xoauth2_string = get_xoauth2_string(config.username)
-    if xoauth2_string:
-        # imaplib.authenticate expects the initial response to be base64 encoded
-        b64_xoauth2_string = base64.b64encode(xoauth2_string.encode('utf-8')).decode('utf-8')
-        response = imap.authenticate('XOAUTH2', lambda x: b64_xoauth2_string.encode('utf-8'))
-        if response[0] != 'OK':
-            raise imaplib.IMAP4.error(f"IMAP XOAUTH2 authentication failed: {response}")
-    else:
-        raise RuntimeError("Failed to get XOAUTH2 string for IMAP authentication.")
     try:
-        imap.select(config.mailbox)
-        criteria = _build_search_criteria(config)
-        status, data = imap.uid("SEARCH", None, *criteria)
-        if status != "OK":
-            return summary
-        uids = [uid for uid in (data[0].split() if data else []) if uid]
+        service = get_gmail_service()
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialize Gmail API service: {e}")
+
+    # Build Gmail API query
+    query_parts = ["is:unread"]
+    if config.allowed_senders:
+        # Gmail API uses OR syntax for multiple senders
+        sender_queries = [f"from:{sender}" for sender in config.allowed_senders]
+        query_parts.append(f"({' OR '.join(sender_queries)})")
+    if config.subject_keyword:
+        query_parts.append(f"subject:({config.subject_keyword})")
+
+    query = " ".join(query_parts)
+
+    try:
+        # Search for messages
+        results = service.users().messages().list(userId='me', q=query, maxResults=limit).execute()
+        messages = results.get('messages', [])
+
         schedule_dirty = False
-        for uid in uids[: max(0, limit)]:
-            message = _fetch_message(imap, uid)
-            if message is None:
-                _mark_seen(imap, uid, dry_run)
+        for msg_info in messages:
+            message_id = msg_info['id']
+
+            # Get full message
+            try:
+                message_data = service.users().messages().get(userId='me', id=message_id, format='raw').execute()
+                raw_message = base64.urlsafe_b64decode(message_data['raw'])
+                parser = BytesParser(policy=policy.default)
+                message = parser.parsebytes(raw_message)
+            except Exception as e:
+                print(f"Failed to parse message {message_id}: {e}")
                 continue
+
             if not _should_accept(message, config.allowed_senders, config.subject_keyword):
-                _mark_seen(imap, uid, dry_run)
+                # Mark as read even if not processed
+                if not dry_run:
+                    try:
+                        service.users().messages().modify(userId='me', id=message_id, body={'removeLabelIds': ['UNREAD']}).execute()
+                    except Exception:
+                        pass
                 continue
+
             body = extract_text_body(message)
             subject = message.get("Subject") or ""
             from_address = _message_from_address(message)
-            message_id = message.get("Message-ID", "")
+            message_id_header = message.get("Message-ID", "")
             received_at = _message_date(message)
+
             record = ReplyProcessingRecord(
-                uid=uid.decode("utf-8", errors="ignore"),
+                uid=message_id,
                 subject=subject,
                 from_address=from_address,
-                message_id=message_id,
+                message_id=message_id_header,
                 received_at=received_at,
                 instruction_count=0,
                 applied_count=0,
@@ -400,20 +372,31 @@ def process_mailbox(
                 schedule_changed=False,
                 confirmation_sent=False,
             )
+
             if not body.strip():
                 record.note = "Email body was empty; nothing to process."
                 summary.records.append(record)
-                _mark_seen(imap, uid, dry_run)
+                if not dry_run:
+                    try:
+                        service.users().messages().modify(userId='me', id=message_id, body={'removeLabelIds': ['UNREAD']}).execute()
+                    except Exception:
+                        pass
                 continue
+
             try:
                 instructions = sr.parse_reply_body(body)
             except sr.ParseError as exc:
                 record.note = str(exc)
                 record.error_count = 1
                 summary.records.append(record)
-                _mark_seen(imap, uid, dry_run)
+                if not dry_run:
+                    try:
+                        service.users().messages().modify(userId='me', id=message_id, body={'removeLabelIds': ['UNREAD']}).execute()
+                    except Exception:
+                        pass
                 _send_confirmation(config, record, schedule_path, dry_run)
                 continue
+
             result = srp.apply_instructions(schedule, instructions, now=now)
             record.outcomes = result.outcomes
             record.instruction_count = len(instructions)
@@ -423,18 +406,25 @@ def process_mailbox(
                 schedule_dirty = True
             record.schedule_changed = result.changed or bool(result.outcomes)
             summary.records.append(record)
-            _mark_seen(imap, uid, dry_run)
+
+            # Mark as read
+            if not dry_run:
+                try:
+                    service.users().messages().modify(userId='me', id=message_id, body={'removeLabelIds': ['UNREAD']}).execute()
+                except Exception:
+                    pass
+
             _send_confirmation(config, record, schedule_path, dry_run)
+
         if schedule_dirty and not dry_run:
             sm.save_schedule(schedule, schedule_path)
         if summary.records and not dry_run:
             RESULTS_ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
             RESULTS_ARCHIVE.write_text(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    finally:
-        try:
-            imap.logout()
-        except Exception:  # pragma: no cover - safe shutdown
-            pass
+
+    except Exception as e:
+        raise RuntimeError(f"Gmail API error: {e}")
+
     return summary
 
 
@@ -459,4 +449,3 @@ __all__ = [
     "extract_text_body",
     "process_mailbox",
 ]
-

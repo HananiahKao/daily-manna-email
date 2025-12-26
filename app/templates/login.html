@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Login · Daily Manna Email{% endblock %}
+{% block content %}
+<section class="login-section">
+  <div class="login-container">
+    <h1>Daily Manna Email</h1>
+    <p class="login-description">Please sign in to access the admin dashboard.</p>
+
+    {% if error %}
+    <div class="flash error" data-type="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/login" class="login-form">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autofocus>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required>
+      </div>
+
+      <button type="submit" class="primary login-button">Sign In</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

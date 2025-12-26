@@ -8,8 +8,7 @@
 - **System · Daily Manna Email** — automates lesson selection, email delivery, scheduling, admin feedback processing, and provides a web dashboard for management.
 - **System · EZOe Content Source (ezoe.work)** — provides lesson HTML scraped for selector-based sends.
 - **System · Legacy Content Source (four.soqimp.com)** — fallback lesson discovery endpoint for SJZL mode.
-- **System · SMTP Relay** — external email service used for all outbound messages.
-- **System · IMAP Mailbox** — inbound channel for admin reply processing.
+- **System · Gmail API** — OAuth-authenticated service for sending emails and reading admin replies.
 
 ```mermaid
 flowchart LR
@@ -17,23 +16,22 @@ flowchart LR
     WebAdmin([Web Admin])
     Recipient([Daily Recipient])
     System[[Daily Manna Email]]
-    SMTP[(SMTP Relay)]
-    IMAP[(IMAP Mailbox)]
+    Gmail[(Gmail API)]
     Ezoe[(EZOe Content Source)]
     Legacy[(Legacy Content Source)]
 
     Admin <-- Weekly summary & replies --> System
     WebAdmin <-- Interactive management --> System
     System --> Recipient
-    System --> SMTP
-    SMTP --> Recipient
-    Admin --> IMAP -. replies .-> System
+    System --> Gmail
+    Gmail --> Recipient
+    Admin --> Gmail -. replies .-> System
     System <---> Ezoe
     System <---> Legacy
 ```
 
 ```
-[Admin Maintainer] ⇄ [Daily Manna Email] ⇄ (SMTP Relay / IMAP Mailbox)
+[Admin Maintainer] ⇄ [Daily Manna Email] ⇄ Gmail API
              ↑                          ⇣
        (Weekly summary & replies)   [Daily Recipient]
 
@@ -49,9 +47,9 @@ flowchart LR
 |-----------|------|------------------|------------------|
 | **Cron / Scheduler** | Bash (`scripts/run_*`) | Entry points triggered by cron; loads `.env`; invokes Python CLIs. | Calls Python containers below. |
 | **Schedule Service** | Python (`schedule_tasks.py`, `schedule_manager.py`) | Maintains `state/ezoe_schedule.json`; calculates next selector; renders weekly summaries; issues reply tokens. | Reads/writes JSON state; invokes Email Delivery and Web Dashboard. |
-| **Email Delivery** | Python (`sjzl_daily_email.py`) | Fetches lesson HTML, wraps content, composes multipart emails, sends via SMTP. | Reads env vars; calls `requests` for scraping; uses SMTP relay. |
+| **Email Delivery** | Python (`sjzl_daily_email.py`) | Fetches lesson HTML, wraps content, composes multipart emails, sends via Gmail API. | Reads env vars; calls `requests` for scraping; uses Gmail API. |
 | **Content Scraper** | Python (`ezoe_week_scraper.py`) | Pulls specific lesson/day HTML from ezoe.work with UTF-8 safeguards. | Invoked by Email Delivery when `EZOE_SELECTOR` is set. |
-| **Admin Reply Processor** | Python (`schedule_reply.py`, `schedule_reply_processor.py`, `schedule_reply_fetcher.py`, `scripts/process_schedule_replies.py`) | Fetches IMAP mail, parses reply tokens, applies adjustments, sends confirmation emails, archives results. | Reads IMAP; updates schedule; calls Email Delivery. |
+| **Admin Reply Processor** | Python (`schedule_reply.py`, `schedule_reply_processor.py`, `schedule_reply_fetcher.py`, `scripts/process_schedule_replies.py`) | Fetches Gmail API mail, parses reply tokens, applies adjustments, sends confirmation emails, archives results. | Uses Gmail API; updates schedule; calls Email Delivery. |
 | **Web Dashboard** | Python (FastAPI, `app/main.py`, `app/templates`, `app/static`) | Provides interactive web interface for viewing and editing schedule entries, calendar display, and administrative actions. | Reads/writes JSON state via Schedule Service; handles authentication. |
 | **State Store** | JSON files (`state/*.json`) | Persists schedule, weekly summary, reply processing outcomes, and HTML archives. | Used by Schedule Service, Admin Reply Processor, and Web Dashboard. |
 
@@ -71,7 +69,7 @@ flowchart TB
 
     subgraph Email["Email Delivery (sjzl_daily_email.py)"]
         FetchCompose[[Fetch & Compose]]
-        SMTPClient[[send_email]]
+        GmailClient[[send_email]]
     end
 
     subgraph Scraper["Content Scraper (ezoe_week_scraper.py)"]
@@ -79,7 +77,7 @@ flowchart TB
     end
 
     subgraph Admin["Admin Reply Processor"]
-        FetchIMAP[[process_schedule_replies.py]]
+        FetchGmail[[process_schedule_replies.py]]
         ParseTokens[[schedule_reply.py]]
         ApplyInstr[[schedule_reply_processor.py]]
     end
@@ -90,8 +88,7 @@ flowchart TB
     end
 
     State[(state/*.json & HTML archives)]
-    SMTPRelay[(SMTP Relay)]
-    IMAPMailbox[(IMAP Mailbox)]
+    GmailMailbox[(Gmail API)]
     Ezoe[(ezoe.work)]
     Legacy[(four.soqimp.com)]
 
@@ -99,20 +96,20 @@ flowchart TB
     NextEntry --> FetchCompose
     FetchCompose --> DayHtml
     DayHtml --> FetchCompose
-    FetchCompose --> SMTPClient
-    SMTPClient --> SMTPRelay
-    EnsureWeek --> SMTPClient
+    FetchCompose --> GmailClient
+    GmailClient --> GmailMailbox
+    EnsureWeek --> GmailClient
     CronJob --> EnsureWeek
-    CronJob --> FetchIMAP
-    FetchIMAP --> IMAPMailbox
-    FetchIMAP --> ParseTokens
+    CronJob --> FetchGmail
+    FetchGmail --> GmailMailbox
+    FetchGmail --> ParseTokens
     ParseTokens --> ApplyInstr
     ApplyInstr --> State
     NextEntry --> State
     EnsureWeek --> State
     MarkSent --> State
     FetchCompose --> State
-    ApplyInstr --> SMTPClient
+    ApplyInstr --> GmailClient
     FetchCompose --> Ezoe
     FetchCompose --> Legacy
     DashboardAPI --> State
@@ -138,7 +135,7 @@ flowchart TB
 |-----------|----------------|-------|
 | `sjzl_daily_email.get_day_html` (via `ezoe_week_scraper`) | Retrieves HTML for a given selector; adds `<h3>` headings; strips chrome. | Ensures UTF-8 decoding and polite delays. |
 | `sjzl_daily_email._wrap_email_html_with_css` | Scopes inline and linked CSS for safe email rendering. | Combines content with `<meta charset='utf-8'>`. |
-| `sjzl_daily_email.send_email` | Sends multipart/alternative emails via SMTP (`SMTP_HOST`, `SMTP_USER`, etc.). | Reused by weekly summaries and reply confirmations. |
+| `sjzl_daily_email.send_email` | Sends multipart/alternative emails via Gmail API (`SMTP_USER`, `EMAIL_FROM`, etc.). | Reused by weekly summaries and reply confirmations. |
 
 ### Admin Reply Components
 
@@ -147,7 +144,7 @@ flowchart TB
 | `schedule_reply.issue_reply_tokens` | Generates expiring tokens stored in schedule metadata. | Adds `meta.reply_tokens` entries with TTL. |
 | `schedule_reply.parse_reply_body` | Parses admin email commands (`[TOKEN] verb args…`). | Supports verbs: `keep`, `skip`, `move`, `selector`, `status`, `note`, `override`. |
 | `schedule_reply_processor.apply_instructions` | Applies parsed commands to schedule entries, tracking outcome. | Removes tokens on success; flags errors for confirmation email. |
-| `schedule_reply_fetcher.process_mailbox` | Connects to IMAP, filters allowed senders, extracts text, invokes processor, archives results. | Uses `ADMIN_REPLY_*` and `IMAP_*` env vars. |
+| `schedule_reply_fetcher.process_mailbox` | Uses Gmail API, filters allowed senders, extracts text, invokes processor, archives results. | Uses `ADMIN_REPLY_*` env vars. |
 | `scripts/process_schedule_replies.py` | CLI wrapper with `--limit` and `--dry-run` for cron/tests. | Used by `scripts/run_schedule_reply_processor.sh`. |
 
 ### Web Dashboard Components
@@ -216,9 +213,9 @@ flowchart LR
 
 ## Deployment & Infrastructure Notes
 
-- **Environment Configuration** — `.env` holds SMTP, IMAP, dashboard credentials (`USERNAME`, `PASSWORD`), and schedule overrides; scripts source it automatically. Key vars: `EZOE_SELECTOR`, `SMTP_*`, `EMAIL_*`, `ADMIN_SUMMARY_*`, `IMAP_*`, `RUN_FORCE`, `EZOE_VOLUME/EZOE_LESSON/EZOE_DAY_START`.
+- **Environment Configuration** — `.env` holds Gmail API, dashboard credentials (`USERNAME`, `PASSWORD`), and schedule overrides; scripts source it automatically. Key vars: `EZOE_SELECTOR`, `SMTP_*`, `EMAIL_*`, `ADMIN_SUMMARY_*`, `RUN_FORCE`, `EZOE_VOLUME/EZOE_LESSON/EZOE_DAY_START`.
 - **State Management** — JSON files and HTML archives under `state/` act as lightweight persistence. Ensure cron jobs and web server have read/write access.
-- **External Dependencies** — Outbound HTTPS (scraping), SMTP, and IMAP connectivity must be available. Rate limiting is enforced via `POLITE_DELAY_MS`.
+- **External Dependencies** — Outbound HTTPS (scraping) and Gmail API connectivity must be available. Rate limiting is enforced via `POLITE_DELAY_MS`.
 - **Web Deployment** — FastAPI app can be run via `uvicorn` or ASGI server; mounted static files and Jinja2 templates for frontend assets.
 
 This textual C4 description complements `SYSTEM_ARCHITECTURE.md` by emphasizing structural boundaries and interactions across system levels.

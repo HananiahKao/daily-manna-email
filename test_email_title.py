@@ -47,7 +47,6 @@ def test_email_titles():
     print("\nExample email subjects:")
     print("- Ezoe: '聖經之旅 | 週三 晨興餧養 | 2025-11-23'")
     print("- Wix:  '晨興聖言 | 週一 | 2025-11-23'")
-    return True
 
 if __name__ == "__main__":
     try:
