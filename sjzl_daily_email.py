@@ -10,13 +10,9 @@ Daily 'Shen Jing Zhi Li' fetcher and emailer.
 - Designed for cron/schedule; uses env vars for credentials/config.
 
 Env vars:
-  SMTP_HOST          e.g., smtp.gmail.com
-  SMTP_PORT          e.g., 587
-  SMTP_USER          your SMTP username (email)
-  SMTP_PASSWORD      your SMTP password or app password
+  SMTP_USER          your Gmail username (email)
   EMAIL_FROM         sender email (often same as SMTP_USER)
   EMAIL_TO           recipient email (comma-separated for multiple)
-  TLS_MODE           'starttls' (default) or 'ssl'
   SJZL_BASE          optional; default 'https://four.soqimp.com/books/2264'
 """
 

@@ -42,9 +42,9 @@ Daily Manna Email
 - Supported verbs today: `keep`, `skip`, `move <ISO date>`, `selector <v-l-d>`, `note <text>`, `status <value>`, `override <descriptor>`.
 - The workflow is still in flux; expect UX polish and confirmation emails in a later pass.
 
-### Automated reply processing (IMAP)
+### Automated reply processing (Gmail API)
 
-- Configure IMAP access (typically Gmail): `IMAP_HOST` (default `imap.gmail.com`), `IMAP_PORT` (default `993`), `IMAP_USER`, `IMAP_PASSWORD`, and optional `IMAP_MAILBOX`.
+- Configure Gmail API access via OAuth (see OAuth setup in web dashboard).
 - Allowed admin senders come from `ADMIN_REPLY_FROM` (comma-separated). When unset, `ADMIN_SUMMARY_TO` is used.
 - Confirmation emails go to `ADMIN_REPLY_CONFIRMATION_TO` when present, otherwise `ADMIN_SUMMARY_TO`.
 - Run `scripts/run_schedule_reply_processor.sh` (cron-friendly) or invoke the Python CLI directly: `scripts/process_schedule_replies.py --limit 5`.
@@ -104,7 +104,7 @@ Daily Manna Email
 # Apply admin reply commands (reads from stdin)
 ./schedule_tasks.py apply-reply < admin_reply.txt
 
-# Process admin reply emails via IMAP (reads credentials from env)
+# Process admin reply emails via Gmail API (reads OAuth credentials from env)
 scripts/run_schedule_reply_processor.sh --limit 5
 ```
 
@@ -117,7 +117,7 @@ scripts/run_schedule_reply_processor.sh --limit 5
 
 ### Deploying on PythonAnywhere
 
-See `docs/DEPLOYMENT_PYTHONANYWHERE.md` for a full walkthrough (virtualenv, ASGI CLI, dispatcher cron, and always-on IMAP processing).
+See `docs/DEPLOYMENT_PYTHONANYWHERE.md` for a full walkthrough (virtualenv, ASGI CLI, dispatcher cron, and always-on Gmail API processing).
 
 ### Migrating from `state/email_progress.json`
 
