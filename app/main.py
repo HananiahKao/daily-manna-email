@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 import secrets
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleRequest
@@ -47,21 +47,24 @@ class EntryPayload(BaseModel):
     notes: Optional[str] = None
     override: Optional[str] = None
 
-    @validator("selector")
+    @field_validator("selector")
+    @classmethod
     def _validate_selector(cls, value: Optional[str]) -> Optional[str]:
         if value:
             source = content_source_factory.get_active_source()
             source.parse_selector(value)
         return value
 
-    @validator("status")
+    @field_validator("status")
+    @classmethod
     def _normalize_status(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
         cleaned = value.strip()
         return cleaned or None
 
-    @validator("notes", "override", pre=True)
+    @field_validator("notes", "override", mode="before")
+    @classmethod
     def _stringify_optional(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
@@ -76,7 +79,8 @@ class MultiMovePayload(BaseModel):
     source_dates: List[dt.date]
     target_date: dt.date
 
-    @validator("source_dates")
+    @field_validator("source_dates")
+    @classmethod
     def _ensure_sources(cls, value: List[dt.date]) -> List[dt.date]:
         if not value:
             raise ValueError("source_dates cannot be empty")
@@ -89,7 +93,8 @@ class MultiMovePayload(BaseModel):
 class BatchUpdatePayload(BaseModel):
     entries: List[EntryPayload]
 
-    @validator("entries")
+    @field_validator("entries")
+    @classmethod
     def _ensure_entries(cls, value: List[EntryPayload]) -> List[EntryPayload]:
         if not value:
             raise ValueError("entries cannot be empty")

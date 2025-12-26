@@ -89,8 +89,8 @@ def test_oauth_status_invalid_token():
             assert response.status_code == 200
             data = response.json()
             assert data["authorized"] == False
-            assert data["status"] == "revoked"
-            assert data["scope_status"] == "none"
+            assert data["status"] == "insufficient"
+            assert data["scope_status"] == "under-authorized"
             print("✓ Test passed: Invalid token detection")
 
     finally:

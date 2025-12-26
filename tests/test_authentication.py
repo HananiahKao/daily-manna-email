@@ -37,16 +37,16 @@ def auth_client(monkeypatch, tmp_path):
 class TestAuthentication:
     """Test authentication functionality including login/logout and session management."""
 
-    def test_root_redirects_unauthenticated_to_login(self, auth_client):
-        """Root route should show login page for unauthenticated users."""
+    def test_root_shows_home_page(self, auth_client):
+        """Root route should show home page for any users."""
         client, *_ = auth_client
         response = client.get("/", follow_redirects=False)
         assert response.status_code == 200
-        assert "login-form" in response.text
-        assert "Daily Manna Dashboard" in response.text
+        assert "Daily Manna Email" in response.text
+        assert "Admin Login" in response.text
 
-    def test_root_redirects_authenticated_to_dashboard(self, auth_client):
-        """Root route should redirect authenticated users to dashboard."""
+    def test_authenticated_can_access_dashboard_directly(self, auth_client):
+        """Authenticated users can access dashboard directly."""
         client, *_ = auth_client
 
         # First login to establish session
@@ -57,15 +57,15 @@ class TestAuthentication:
         assert login_response.status_code == 302
         assert login_response.headers["location"] == "/dashboard"
 
-        # Now root should redirect to dashboard
-        response = client.get("/", follow_redirects=False)
-        assert response.status_code == 302
-        assert response.headers["location"] == "/dashboard"
+        # Dashboard should be accessible
+        response = client.get("/dashboard")
+        assert response.status_code == 200
+        assert "Calendar" in response.text
 
     def test_login_page_renders(self, auth_client):
         """Login page should render correctly."""
         client, *_ = auth_client
-        response = client.get("/")
+        response = client.get("/login-form")
         assert response.status_code == 200
         assert "Sign In" in response.text
         assert "username" in response.text
@@ -107,10 +107,10 @@ class TestAuthentication:
         assert response.status_code == 302
         assert response.headers["location"] == "/"
 
-        # Root should now show login page again
+        # Root should still show home page
         root_response = client.get("/", follow_redirects=False)
         assert root_response.status_code == 200
-        assert "login-form" in root_response.text
+        assert "Daily Manna Email" in root_response.text
 
     def test_dashboard_requires_authentication(self, auth_client):
         """Dashboard route should require authentication."""

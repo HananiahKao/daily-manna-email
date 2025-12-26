@@ -104,9 +104,9 @@ def test_extract_readable_text_fallbacks():
     assert isinstance(text2, str)
 
 
-@patch("sjzl_daily_email.get_xoauth2_string")
+@patch("sjzl_daily_email.get_gmail_service")
 @patch("smtplib.SMTP")
-def test_send_email_starttls(mock_smtp, mock_oauth, monkeypatch):
+def test_send_email_starttls(mock_smtp, mock_gmail, monkeypatch):
     # Set required envs
     monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("SMTP_PORT", "587")
@@ -115,28 +115,20 @@ def test_send_email_starttls(mock_smtp, mock_oauth, monkeypatch):
     monkeypatch.setenv("EMAIL_TO", "to@example.com")
     monkeypatch.setenv("TLS_MODE", "starttls")
 
-    # Mock OAuth to return a valid XOAUTH2 string
-    mock_oauth.return_value = "user=user@example.com\x01auth=Bearer fake_token\x01\x01"
-
-    # Create mock server instance
-    instance = MagicMock()
-    instance.docmd.return_value = (235, b"Authentication successful")
-    
-    # Configure the SMTP mock to return our instance via context manager
-    mock_smtp.return_value = instance
+    # Mock Gmail service
+    mock_service = MagicMock()
+    mock_gmail.return_value = mock_service
 
     sjzl.send_email("Subj", "Body")
 
-    assert mock_smtp.called
-    # starttls/docmd/sendmail are called on the server object
-    instance.starttls.assert_called()
-    instance.docmd.assert_called()
-    instance.sendmail.assert_called()
+    # Since it uses Gmail API now, SMTP mocks shouldn't be called
+    assert not mock_smtp.called
+    mock_gmail.assert_called()
 
 
-@patch("sjzl_daily_email.get_xoauth2_string")
+@patch("sjzl_daily_email.get_gmail_service")
 @patch("smtplib.SMTP_SSL")
-def test_send_email_ssl_with_html(mock_smtp_ssl, mock_oauth, monkeypatch):
+def test_send_email_ssl_with_html(mock_smtp_ssl, mock_gmail, monkeypatch):
     monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("SMTP_PORT", "465")
     monkeypatch.setenv("SMTP_USER", "user@example.com")
@@ -144,17 +136,12 @@ def test_send_email_ssl_with_html(mock_smtp_ssl, mock_oauth, monkeypatch):
     monkeypatch.setenv("EMAIL_TO", "to1@example.com, to2@example.com")
     monkeypatch.setenv("TLS_MODE", "ssl")
 
-    # Mock OAuth to return a valid XOAUTH2 string
-    mock_oauth.return_value = "user=user@example.com\x01auth=Bearer fake_token\x01\x01"
-
-    # Create mock server instance
-    instance = MagicMock()
-    instance.docmd.return_value = (235, b"Authentication successful")
-    
-    # Configure the SMTP_SSL mock to return our instance via context manager
-    mock_smtp_ssl.return_value = instance
+    # Mock Gmail service
+    mock_service = MagicMock()
+    mock_gmail.return_value = mock_service
 
     sjzl.send_email("Subj", "Body", html_body="<b>Hi</b>")
 
-    assert mock_smtp_ssl.called
-    instance.sendmail.assert_called()
+    # Since it uses Gmail API now, SMTP mocks shouldn't be called
+    assert not mock_smtp_ssl.called
+    mock_gmail.assert_called()
