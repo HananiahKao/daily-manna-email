@@ -208,8 +208,28 @@ def create_app() -> FastAPI:
                     "scope_status": "none"
                 })
 
-            # Load credentials from file
-            creds = Credentials.from_authorized_user_file(str(token_path), scopes=None)
+            # Load credentials from file (handles both encrypted and unencrypted)
+            try:
+                creds = Credentials.from_authorized_user_file(str(token_path), scopes=None)
+            except (ValueError, json.decoder.JSONDecodeError):
+                # Try loading encrypted tokens
+                try:
+                    from app.token_encryption import decrypt_token_data, is_encrypted_data
+                    with open(token_path, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                    if is_encrypted_data(content):
+                        decrypted_data = decrypt_token_data(content)
+                        creds = Credentials.from_authorized_user_info(decrypted_data, scopes=None)
+                    else:
+                        raise ValueError("Not encrypted data")
+                except Exception:
+                    return JSONResponse({
+                        "authorized": False,
+                        "status": "corrupted",
+                        "message": "OAuth token file is corrupted or unreadable",
+                        "scope_status": "unknown"
+                    })
+
             if not creds.token:
                 return JSONResponse({
                     "authorized": False,
@@ -409,10 +429,23 @@ def create_app() -> FastAPI:
 
         # Store credentials if available
         if creds:
-            token_path = PROJECT_ROOT / "token.json"
-            with open(token_path, 'w') as token_file:
-                token_file.write(creds.to_json())
-            print(f"Saved credentials with scopes: {creds.scopes}")
+            # Import the encryption utilities
+            try:
+                from app.token_encryption import encrypt_token_data
+                # Convert credentials to dict and encrypt
+                creds_dict = json.loads(creds.to_json())
+                encrypted_data = encrypt_token_data(creds_dict)
+                token_path = PROJECT_ROOT / "token.json"
+                with open(token_path, 'w', encoding='utf-8') as token_file:
+                    token_file.write(encrypted_data)
+                print(f"Saved encrypted credentials with scopes: {creds.scopes}")
+            except ImportError:
+                # Fallback to unencrypted if encryption not available
+                print("WARNING: Token encryption not available, saving unencrypted")
+                token_path = PROJECT_ROOT / "token.json"
+                with open(token_path, 'w', encoding='utf-8') as token_file:
+                    token_file.write(creds.to_json())
+                print(f"Saved unencrypted credentials with scopes: {creds.scopes}")
 
         # Clear state from session
         request.session.pop('oauth_state', None)

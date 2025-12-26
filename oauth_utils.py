@@ -4,11 +4,34 @@ import base64
 import imaplib
 import smtplib
 import sys
+import logging
 from pathlib import Path
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+
+logger = logging.getLogger(__name__)
+
+# Import token encryption utilities
+try:
+    from app.token_encryption import (
+        encrypt_token_data,
+        decrypt_token_data,
+        is_encrypted_data,
+        migrate_unencrypted_tokens,
+        TokenEncryptionError
+    )
+    ENCRYPTION_AVAILABLE = True
+except ImportError:
+    # Fallback if encryption module not available
+    logger.warning("Token encryption module not available, falling back to unencrypted tokens")
+    ENCRYPTION_AVAILABLE = False
+    encrypt_token_data = None
+    decrypt_token_data = None
+    is_encrypted_data = None
+    migrate_unencrypted_tokens = None
+    TokenEncryptionError = Exception
 
 # Define minimal scopes required for the application:
 # - gmail.send for sending messages via Gmail API
@@ -20,6 +43,65 @@ SCOPES = [
 CLIENT_SECRET_FILE = 'client_secret.json'
 TOKEN_FILE = 'token.json'
 
+def _load_credentials_from_file():
+    """
+    Load credentials from token file, handling both encrypted and unencrypted formats.
+
+    Returns:
+        Credentials object or None if file doesn't exist or can't be loaded
+    """
+    if not Path(TOKEN_FILE).exists():
+        return None
+
+    try:
+        with open(TOKEN_FILE, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+
+        if not content:
+            return None
+
+        # Try encrypted format first if encryption is available
+        if ENCRYPTION_AVAILABLE and is_encrypted_data and is_encrypted_data(content):
+            try:
+                decrypted_data = decrypt_token_data(content)
+                return Credentials.from_authorized_user_info(decrypted_data, SCOPES)
+            except TokenEncryptionError as e:
+                logger.warning(f"Failed to decrypt token data: {e}. Trying unencrypted format.")
+                # Fall back to unencrypted
+                return Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+        else:
+            # Load as unencrypted JSON
+            return Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+
+    except (ValueError, json.decoder.JSONDecodeError, TokenEncryptionError) as e:
+        raise RuntimeError(f"Error loading token from {TOKEN_FILE}: {e}. Please re-authorize via the web dashboard.")
+
+
+def _save_credentials_to_file(creds):
+    """
+    Save credentials to token file in encrypted format if encryption is available.
+
+    Args:
+        creds: Credentials object to save
+    """
+    if ENCRYPTION_AVAILABLE and encrypt_token_data:
+        try:
+            # Convert to dict and encrypt
+            creds_dict = json.loads(creds.to_json())
+            encrypted_data = encrypt_token_data(creds_dict)
+            with open(TOKEN_FILE, 'w', encoding='utf-8') as f:
+                f.write(encrypted_data)
+        except TokenEncryptionError as e:
+            logger.error(f"Failed to encrypt credentials: {e}. Saving unencrypted.")
+            # Fall back to unencrypted
+            with open(TOKEN_FILE, 'w', encoding='utf-8') as f:
+                f.write(creds.to_json())
+    else:
+        # Save unencrypted
+        with open(TOKEN_FILE, 'w', encoding='utf-8') as f:
+            f.write(creds.to_json())
+
+
 def get_credentials():
     """
     Handles the OAuth 2.0 flow to get valid credentials.
@@ -30,21 +112,16 @@ def get_credentials():
     """
     creds = None
 
-    # 1. Load existing token
-    if Path(TOKEN_FILE).exists():
-        try:
-            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-        except (ValueError, json.decoder.JSONDecodeError) as e:
-            raise RuntimeError(f"Error loading token from {TOKEN_FILE}: {e}. Please re-authorize via the web dashboard.")
+    # 1. Load existing token (handles both encrypted and unencrypted)
+    creds = _load_credentials_from_file()
 
     # 2. Refresh token if expired
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
-                # Save refreshed credentials
-                with open(TOKEN_FILE, 'w') as token:
-                    token.write(creds.to_json())
+                # Save refreshed credentials (encrypted if available)
+                _save_credentials_to_file(creds)
             except Exception as e:
                 raise RuntimeError(f"Error refreshing OAuth token: {e}. Please re-authorize via the web dashboard.")
         else:
