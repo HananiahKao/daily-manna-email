@@ -80,6 +80,9 @@ class WixContentSource(ContentSource):
             for tag in soup_content.select(sel):
                 tag.decompose()
 
+        # Clean up Wix-specific styling and empty paragraphs
+        self._clean_wix_html(soup_content)
+
         # Extract title - look for meaningful content title
         title = selector.strip("【】")  # Default to weekday e.g., "週一"
         
@@ -201,6 +204,65 @@ class WixContentSource(ContentSource):
             logger.warning("No Wix selector patterns found - page structure may have changed")
 
         return segments
+
+    def _clean_wix_html(self, soup: BeautifulSoup) -> None:
+        """Clean up Wix-specific HTML elements and styling that cause spacing issues in emails."""
+        # Remove Wix-specific classes and inline styles
+        wix_classes_to_remove = [
+            'font_8', 'wixui-rich-text__text', 'backcolor_44', 'color_43',
+            'font_9', 'font_10', 'wixui-rich-text', 'wixGuard'
+        ]
+
+        # Remove Wix classes from all elements
+        for element in soup.find_all(attrs={'class': True}):
+            classes = element.get('class')
+            if classes is None:
+                continue
+            if isinstance(classes, str):
+                classes = classes.split()
+            elif not isinstance(classes, list):
+                continue
+            # Remove Wix-specific classes
+            filtered_classes = [cls for cls in classes if not any(wix_cls in cls for wix_cls in wix_classes_to_remove)]
+            if filtered_classes:
+                element['class'] = filtered_classes
+            else:
+                del element['class']
+
+        # Remove Wix inline styles that affect spacing
+        for element in soup.find_all(style=True):
+            style_attr = element.get('style')
+            if not isinstance(style_attr, str):
+                continue
+            style = style_attr
+            # Remove font-size declarations that might override email CSS
+            style = re.sub(r'font-size\s*:\s*[^;]+;', '', style)
+            # Remove other Wix-specific style properties
+            style = re.sub(r'font-family\s*:\s*[^;]+;', '', style)
+            # Clean up empty or whitespace-only style attributes
+            style = style.strip()
+            if style:
+                element['style'] = style
+            else:
+                del element['style']
+
+        # Remove empty paragraphs that contain only zero-width spaces or whitespace
+        for p in soup.find_all('p'):
+            text_content = p.get_text(strip=True)
+            # Remove paragraphs that are empty or contain only zero-width spaces
+            if not text_content or text_content == '​' or all(ord(c) in (8203, 160, 32) for c in text_content):
+                p.decompose()
+                continue
+
+            # Also remove paragraphs that have no meaningful content after cleaning
+            if not p.find_all(['strong', 'b', 'em', 'i', 'span']) and len(text_content) < 3:
+                p.decompose()
+
+        # Flatten nested spans that don't add value
+        for span in soup.find_all('span'):
+            # If span has no attributes and only contains text or simple elements, unwrap it
+            if not span.attrs and span.parent and span.parent.name in ['p', 'div']:
+                span.unwrap()
 
     def _extract_plain_text(self, soup: BeautifulSoup) -> str:
         """Extract readable plain text from HTML content."""
