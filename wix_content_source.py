@@ -8,6 +8,7 @@ Fetches content from churchintamsui.wixsite.com/index/morning-revival.
 import requests
 from bs4 import BeautifulSoup
 import re
+import logging
 import content_source
 ContentSource = content_source.ContentSource
 ContentBlock = content_source.ContentBlock
@@ -27,9 +28,11 @@ WEEKDAY_LABELS = {
     "【主日】": 7,
 }
 
-# Regex pattern to match lower section markers like "第五週■週一", "第五週■週二", etc.
+# Regex pattern to match lower section markers like "第一週•週一", "第一週•週二", etc.
+# Uses flexible matching to handle various separators between week and day
 # The week number uses Chinese numerals (一二三四五六七八九十), so we match any characters
-LOWER_SECTION_PATTERN = re.compile(r'第.+?週■(週[一二三四五六日]|主日)')
+# Future-proof: allows any characters between "週" and the day part
+LOWER_SECTION_PATTERN = re.compile(r'第.+?週.*?(週[一二三四五六日]|主日)')
 
 # Combined markers for sections spanning multiple days (for backward compatibility)
 SECTION_MARKERS = list(WEEKDAY_LABELS.keys()) + ["【週四、週五】"]
@@ -146,10 +149,11 @@ class WixContentSource(ContentSource):
         return soup.find("body") or soup
 
     def _segment_by_weekdays(self, content) -> dict:
-        """Split content into segments based on lower section markers (第X週■週Y)."""
+        """Split content into segments based on lower section markers (第X週•週Y)."""
         segments = {}
+        logger = logging.getLogger(__name__)
 
-        # Find all paragraph elements in the content
+        # Find all paragraph elements in the content that can contain markers
         all_paragraphs = content.find_all(['p', 'h2', 'h3', 'h4', 'div'])
 
         current_selector = None
@@ -160,7 +164,7 @@ class WixContentSource(ContentSource):
 
             # Check if this paragraph starts a new weekday section using the lower section pattern
             match = LOWER_SECTION_PATTERN.search(text)
-            
+
             if match:
                 # Extract the weekday part (週一, 週二, etc. or 主日)
                 weekday = match.group(1)
@@ -169,10 +173,10 @@ class WixContentSource(ContentSource):
                     found_marker = "【主日】"
                 else:
                     found_marker = f"【{weekday}】"
-                
+
                 # Save previous segment in dictionary
                 if current_selector and current_segments:
-                    # Combine all paragraphs in this segment
+                    # Combine all paragraphs in this segment, preserving HTML structure
                     content_html = '\n'.join([str(seg) for seg in current_segments])
                     segments[current_selector] = content_html
 
@@ -187,6 +191,14 @@ class WixContentSource(ContentSource):
         if current_selector and current_segments:
             content_html = '\n'.join([str(seg) for seg in current_segments])
             segments[current_selector] = content_html
+
+        # Debug logging
+        found_patterns = list(segments.keys())
+        logger.info(f"Wix selector patterns found: {found_patterns}")
+        logger.info(f"Wix segments extracted: {list(segments.keys())}")
+
+        if not segments:
+            logger.warning("No Wix selector patterns found - page structure may have changed")
 
         return segments
 
@@ -355,5 +367,3 @@ class WixContentSource(ContentSource):
             "supports_range": True,
             "range_example": "【週一】 to 【週五】",
         }
-
-
