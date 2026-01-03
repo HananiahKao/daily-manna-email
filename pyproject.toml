@@ -1,0 +1,22 @@
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "test_*",
+    "conftest.py",
+    "docs/*",
+    ".venv/*",
+    "app/__pycache__/*",
+    "__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
