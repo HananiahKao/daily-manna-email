@@ -282,7 +282,7 @@ def _send_admin_email(recipients: Sequence[str], subject: str, text_body: str, h
         os.environ["EMAIL_TO"] = ",".join(recipients)
         if admin_from:
             os.environ["EMAIL_FROM"] = admin_from
-        sjzl.send_email(subject, text_body, html_body=html_body)
+        sjzl.send_email(subject, text_body, html_body=html_body)  # Recipients logged by send_email
     finally:
         if original_email_to is None:
             os.environ.pop("EMAIL_TO", None)

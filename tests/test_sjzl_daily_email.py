@@ -145,3 +145,110 @@ def test_send_email_ssl_with_html(mock_smtp_ssl, mock_gmail, monkeypatch):
     # Since it uses Gmail API now, SMTP mocks shouldn't be called
     assert not mock_smtp_ssl.called
     mock_gmail.assert_called()
+
+
+@patch("sjzl_daily_email.get_gmail_service")
+def test_send_email_debug_mode(mock_gmail, monkeypatch):
+    monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("EMAIL_TO", "to@example.com")
+    monkeypatch.setenv("DEBUG_MODE", "1")
+
+    # Mock Gmail service
+    mock_service = MagicMock()
+    mock_gmail.return_value = mock_service
+
+    sjzl.send_email("Test Subject", "Test Body")
+
+    # Verify the message was sent
+    assert mock_gmail.called
+
+    # Get the sent message data
+    call_args = mock_gmail.return_value.users.return_value.messages.return_value.send.call_args
+    message_data = call_args[1]['body']
+
+    # Decode the raw message to check recipient
+    import base64
+    raw_message = base64.urlsafe_b64decode(message_data['raw'])
+    message_str = raw_message.decode('utf-8', errors='ignore')
+
+    # In debug mode, should send to EMAIL_FROM
+    assert "To: from@example.com" in message_str
+    assert "To: to@example.com" not in message_str
+
+
+@patch("sjzl_daily_email.get_gmail_service")
+def test_send_email_normal_mode(mock_gmail, monkeypatch):
+    monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("EMAIL_TO", "to@example.com")
+    monkeypatch.delenv("DEBUG_MODE", raising=False)  # Ensure DEBUG_MODE is not set
+
+    # Mock Gmail service
+    mock_service = MagicMock()
+    mock_gmail.return_value = mock_service
+
+    sjzl.send_email("Test Subject", "Test Body")
+
+    # Verify the message was sent
+    assert mock_gmail.called
+
+    # Get the sent message data
+    call_args = mock_gmail.return_value.users.return_value.messages.return_value.send.call_args
+    message_data = call_args[1]['body']
+
+    # Decode the raw message to check recipient
+    import base64
+    raw_message = base64.urlsafe_b64decode(message_data['raw'])
+    message_str = raw_message.decode('utf-8', errors='ignore')
+
+    # In normal mode, should send to EMAIL_TO
+    assert "To: to@example.com" in message_str
+    assert "To: from@example.com" not in message_str
+
+
+def test_debug_enabled():
+    # Test _debug_enabled function
+    import os
+
+    # Save original env
+    orig_debug_email = os.environ.get("DEBUG_EMAIL")
+    orig_debug_mode = os.environ.get("DEBUG_MODE")
+
+    try:
+        # Neither set
+        if "DEBUG_EMAIL" in os.environ:
+            del os.environ["DEBUG_EMAIL"]
+        if "DEBUG_MODE" in os.environ:
+            del os.environ["DEBUG_MODE"]
+        assert not sjzl._debug_enabled()
+
+        # DEBUG_MODE set
+        os.environ["DEBUG_MODE"] = "1"
+        assert sjzl._debug_enabled()
+
+        # DEBUG_EMAIL set, DEBUG_MODE unset
+        del os.environ["DEBUG_MODE"]
+        os.environ["DEBUG_EMAIL"] = "1"
+        assert sjzl._debug_enabled()
+
+        # Both set
+        os.environ["DEBUG_MODE"] = "1"
+        assert sjzl._debug_enabled()
+
+        # DEBUG_MODE false values
+        os.environ["DEBUG_MODE"] = "0"
+        assert sjzl._debug_enabled()  # Still true because DEBUG_EMAIL is set
+
+        os.environ["DEBUG_EMAIL"] = "0"
+        assert not sjzl._debug_enabled()
+
+    finally:
+        # Restore original env
+        if orig_debug_email is not None:
+            os.environ["DEBUG_EMAIL"] = orig_debug_email
+        elif "DEBUG_EMAIL" in os.environ:
+            del os.environ["DEBUG_EMAIL"]
+
+        if orig_debug_mode is not None:
+            os.environ["DEBUG_MODE"] = orig_debug_mode
+        elif "DEBUG_MODE" in os.environ:
+            del os.environ["DEBUG_MODE"]

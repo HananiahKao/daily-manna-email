@@ -231,7 +231,10 @@ logger = logging.getLogger("sjzl-daily")
 
 
 def _debug_enabled() -> bool:
-    return os.getenv("DEBUG_EMAIL") not in (None, "", "0", "false", "False")
+    return (
+        os.getenv("DEBUG_EMAIL") not in (None, "", "0", "false", "False") or
+        os.getenv("DEBUG_MODE") not in (None, "", "0", "false", "False")
+    )
 
 
 def _debug_preview(label: str, text: str) -> None:
@@ -444,13 +447,21 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
 
 # -------- Email sending --------
 
-def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -> None:
+def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -> List[str]:
     """
     Send email using Gmail API.
+    Returns the list of recipients the email was sent to.
     """
     email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
-    email_to_raw = os.environ["EMAIL_TO"]
-    recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
+
+    # Debug mode: send to EMAIL_FROM instead of EMAIL_TO
+    debug_mode = os.getenv("DEBUG_MODE") not in (None, "", "0", "false", "False")
+    if debug_mode:
+        email_to_raw = email_from
+        recipients = [email_from] if email_from else []
+    else:
+        email_to_raw = os.environ["EMAIL_TO"]
+        recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
 
     # Create message
     msg = MIMEMultipart("alternative")
@@ -481,6 +492,8 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -
     except Exception as e:
         logger.error("Failed to send email via Gmail API: %s", e)
         raise
+
+    return recipients
 
 
 # -------- Main job --------
@@ -648,8 +661,8 @@ def run_once() -> int:
         # Convert visible content to zh-TW (server side) for both HTML and text
         html_with_css = _maybe_convert_zh_cn_to_zh_tw(html_with_css)
         body = _maybe_convert_zh_cn_to_zh_tw(body)
-        send_email(subject, body, html_body=html_with_css)
-        logger.info("HTML email (ezoe) sent to %s", os.environ.get("EMAIL_TO", ""))
+        recipients = send_email(subject, body, html_body=html_with_css)
+        logger.info("HTML email (ezoe) sent to %s", ", ".join(recipients))
         return 0
     # Allow override for testing SMTP without discovery/fetch variability
     test_url = os.getenv("TEST_LESSON_URL")
@@ -699,8 +712,8 @@ def run_once() -> int:
     _debug_preview("SJZL_SUBJECT", subject)
     _debug_preview("SJZL_BODY", body)
 
-    send_email(subject, body, html_body=html_body)
-    logger.info("Email sent to %s", os.environ.get("EMAIL_TO", ""))
+    recipients = send_email(subject, body, html_body=html_body)
+    logger.info("Email sent to %s", ", ".join(recipients))
     return 0
 
 

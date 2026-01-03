@@ -89,7 +89,8 @@ class TestWixEmailContent:
         subject = f"[TEST] 晨興聖言 - {content.title}"
 
         # This will actually send an email if environment is configured
-        sjzl.send_email(subject, content.plain_text_content, html_body=content.html_content)
+        recipients = sjzl.send_email(subject, content.plain_text_content, html_body=content.html_content)
+        assert len(recipients) > 0  # Should have sent to at least one recipient
 
         # If we get here without exception, email was sent successfully
         assert True

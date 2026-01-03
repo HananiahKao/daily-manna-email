@@ -139,7 +139,7 @@ def _send_summary_email(subject: str, text_body: str, html_body: str) -> None:
         os.environ["EMAIL_TO"] = admin_to
         if admin_from:
             os.environ["EMAIL_FROM"] = admin_from
-        sjzl.send_email(subject, text_body, html_body=html_body)
+        sjzl.send_email(subject, text_body, html_body=html_body)  # Recipients logged by send_email
     finally:
         if original_email_to is None:
             os.environ.pop("EMAIL_TO", None)
