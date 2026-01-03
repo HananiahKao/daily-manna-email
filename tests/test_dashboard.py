@@ -42,8 +42,9 @@ def dashboard_client(monkeypatch, tmp_path):
 
 def test_dashboard_requires_auth(dashboard_client):
     client, _path, _date = dashboard_client
-    response = client.get("/dashboard")
-    assert response.status_code == 401
+    response = client.get("/dashboard", follow_redirects=False)
+    assert response.status_code == 302
+    assert "login-form" in response.headers["location"]
 
 
 def test_dashboard_renders_schedule(dashboard_client):

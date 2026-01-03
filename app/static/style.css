@@ -997,6 +997,28 @@ kbd {
   font-weight: 500;
 }
 
+/* Session Expiry Flash Button */
+.session-expiry-btn {
+  background: #4f46e5;
+  color: #ffffff;
+  border: 1px solid #4f46e5;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 0.75rem;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.session-expiry-btn:hover {
+  background: #4338ca;
+}
+
+.session-expiry-btn:active {
+  transform: scale(0.98);
+}
+
 /* Logout Button Styles */
 .logout-btn {
   background: #dc2626 !important;

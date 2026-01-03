@@ -88,6 +88,7 @@
       this.bindBatchEditOverlay();
       this.bindGlobalKeys();
       this.bindScrollBehavior();
+      this.bindSessionDetection();
       this.showInitialFlash();
 
       // Load batch UI config and schedule data
@@ -296,6 +297,37 @@
           this.scrollTicking = false;
         });
       });
+    }
+
+    bindSessionDetection() {
+      // Check session when user returns to the tab
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          this.checkSessionStatus();
+        }
+      });
+
+      // Check session when window gains focus
+      window.addEventListener('focus', () => {
+        this.checkSessionStatus();
+      });
+    }
+
+    async checkSessionStatus() {
+      try {
+        // Use a lightweight endpoint to check session
+        const response = await fetch('/oauth/status', {
+          credentials: 'include'
+        });
+
+        if (response.status === 401) {
+          // Session expired - show interactive countdown
+          this.showSessionExpiryFlash();
+        }
+      } catch (e) {
+        // Ignore network errors - user might be offline
+        console.debug('Session check failed:', e);
+      }
     }
 
     async resetToMonth(year, month) {
@@ -1245,12 +1277,69 @@
       }
     }
 
+    showSessionExpiryFlash() {
+      if (!this.flashContainer) {
+        return;
+      }
+
+      // Remove any existing session expiry flash
+      const existing = this.flashContainer.querySelector('.session-expiry-flash');
+      if (existing) {
+        existing.remove();
+      }
+
+      const flash = document.createElement("div");
+      flash.className = "flash info session-expiry-flash";
+
+      const messageSpan = document.createElement("span");
+      messageSpan.textContent = "Welcome back! Your session expired. Redirecting in ";
+
+      const countdownSpan = document.createElement("span");
+      countdownSpan.className = "countdown";
+      countdownSpan.textContent = "5 seconds";
+
+      const button = document.createElement("button");
+      button.className = "session-expiry-btn";
+      button.textContent = "Login Now";
+      button.addEventListener("click", () => {
+        const currentUrl = encodeURIComponent(window.location.href);
+        window.location.href = `/login-form?next=${currentUrl}`;
+      });
+
+      flash.appendChild(messageSpan);
+      flash.appendChild(countdownSpan);
+      flash.appendChild(document.createTextNode(" "));
+      flash.appendChild(button);
+
+      this.flashContainer.appendChild(flash);
+
+      // Start countdown
+      let countdown = 5;
+      const countdownInterval = setInterval(() => {
+        countdown--;
+        countdownSpan.textContent = `${countdown} second${countdown <= 1 ? 's' : ''}`;
+
+        if (countdown <= 0) {
+          clearInterval(countdownInterval);
+          const currentUrl = encodeURIComponent(window.location.href);
+          window.location.href = `/login-form?next=${currentUrl}`;
+        }
+      }, 1000);
+
+      // Clear countdown if flash is removed
+      const clearCountdown = () => {
+        clearInterval(countdownInterval);
+        flash.removeEventListener('remove', clearCountdown);
+      };
+      flash.addEventListener('remove', clearCountdown);
+    }
+
     showFlash(type, text) {
       if (!text || !this.flashContainer) {
         return;
       }
       const flash = document.createElement("div");
-      flash.className = `flash ${type === "error" ? "error" : "success"}`;
+      flash.className = `flash ${type}`;
       flash.textContent = text;
       this.flashContainer.appendChild(flash);
       setTimeout(() => {
@@ -1274,6 +1363,12 @@
     }
 
     async extractError(response) {
+      if (response.status === 401) {
+        // Handle session expiry with interactive countdown
+        this.showSessionExpiryFlash();
+        return "Session expired - redirecting to login...";
+      }
+
       try {
         const data = await response.json();
         if (data.detail) {

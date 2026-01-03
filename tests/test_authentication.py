@@ -82,6 +82,17 @@ class TestAuthentication:
         assert response.status_code == 302
         assert response.headers["location"] == "/dashboard"
 
+    def test_login_success_redirects_to_next_url(self, auth_client):
+        """Successful login should redirect to next URL when provided."""
+        client, *_ = auth_client
+        response = client.post("/login", data={
+            "username": "test_admin",
+            "password": "test_password",
+            "next": "/oauth/start"
+        }, follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "/oauth/start"
+
     def test_login_failure_shows_error(self, auth_client):
         """Failed login should show error message."""
         client, *_ = auth_client
@@ -113,10 +124,11 @@ class TestAuthentication:
         assert "Daily Manna Email" in root_response.text
 
     def test_dashboard_requires_authentication(self, auth_client):
-        """Dashboard route should require authentication."""
+        """Dashboard route should require authentication and redirect to login."""
         client, *_ = auth_client
         response = client.get("/dashboard", follow_redirects=False)
-        assert response.status_code == 401
+        assert response.status_code == 302
+        assert "login-form" in response.headers["location"]
 
     def test_dashboard_accessible_when_authenticated(self, auth_client):
         """Dashboard should be accessible when authenticated."""

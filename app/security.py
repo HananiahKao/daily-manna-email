@@ -49,6 +49,22 @@ def authenticate_user(username: str, password: str) -> bool:
     return valid_user and valid_password
 
 
+def require_user_or_redirect(request: Request) -> str:
+    """Check if user is authenticated, redirect to login on failure."""
+    try:
+        return require_user(request)
+    except HTTPException as e:
+        if e.status_code == 401:
+            from urllib.parse import quote
+            next_url = quote(str(request.url))
+            raise HTTPException(
+                status_code=302,
+                detail="Authentication required",
+                headers={"Location": f"/login-form?next={next_url}"}
+            )
+        raise
+
+
 def login_required(request: Request) -> Optional[str]:
     """Check if user is authenticated, return username or None."""
     try:

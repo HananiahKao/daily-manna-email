@@ -32,7 +32,7 @@ import schedule_manager as sm
 import content_source_factory
 
 from app.config import AppConfig, get_config
-from app.security import require_user, authenticate_user, login_required
+from app.security import require_user, authenticate_user, login_required, require_user_or_redirect
 from app.oauth_scopes import get_scopes_descriptions
 
 
@@ -170,23 +170,26 @@ def create_app() -> FastAPI:
     def login_page(request: Request) -> HTMLResponse:
         """Show login form."""
         templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-        return templates.TemplateResponse(request, "login.html")
+        return templates.TemplateResponse(request, "login.html", {
+            "next": request.query_params.get("next", "/dashboard")
+        })
 
     @app.post("/login")
     def login(
         request: Request,
         username: str = Form(...),
         password: str = Form(...),
+        next: str = Form("/dashboard"),
     ) -> Response:
         if authenticate_user(username, password):
             request.session["user"] = username
-            return RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+            return RedirectResponse(url=next, status_code=status.HTTP_302_FOUND)
         else:
             templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
             return templates.TemplateResponse(
                 request,
                 "login.html",
-                {"error": "Invalid credentials"},
+                {"error": "Invalid credentials", "next": next},
                 status_code=status.HTTP_401_UNAUTHORIZED
             )
 
@@ -311,8 +314,9 @@ def create_app() -> FastAPI:
             })
 
     @app.get("/oauth/start")
-    def oauth_start(request: Request, _: str = Depends(require_user)) -> RedirectResponse:
+    def oauth_start(request: Request) -> RedirectResponse:
         """Initiate OAuth flow."""
+        require_user_or_redirect(request)
         client_secret_path = PROJECT_ROOT / "client_secret.json"
         if not client_secret_path.exists():
             return RedirectResponse(
@@ -354,7 +358,7 @@ def create_app() -> FastAPI:
         error: Optional[str] = None
     ) -> RedirectResponse:
         """Handle OAuth callback."""
-        require_user(request)
+        require_user_or_redirect(request)
 
         # Check if user denied authorization
         if error == "access_denied":
@@ -471,7 +475,7 @@ def create_app() -> FastAPI:
         request: Request,
         settings: AppConfig = Depends(get_config),
     ) -> HTMLResponse:
-        require_user(request)
+        require_user_or_redirect(request)
         schedule_path = _resolve_schedule_path(settings)
         schedule = sm.load_schedule(schedule_path)
 
