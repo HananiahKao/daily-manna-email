@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import html
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -16,6 +17,13 @@ import schedule_manager as sm
 import schedule_reply as sr
 import schedule_reply_processor as srp
 from content_source_factory import get_content_source
+
+# Set up logging for schedule operations
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger("schedule-tasks")
 
 try:
     import sjzl_daily_email as sjzl
@@ -40,7 +48,7 @@ def _next_monday(today: dt.date) -> dt.date:
     return today + dt.timedelta(days=delta)
 
 
-def _entries_for_range(schedule: sm.Schedule, start: dt.date, end: dt.date) -> List[sm.ScheduleEntry]:
+def _entries_for_range(schedule: sm.Schedule, start: dt.date, end: dt.date) -> List[Optional[sm.ScheduleEntry]]:
     days = (end - start).days + 1
     return [schedule.get_entry(start + dt.timedelta(days=i)) for i in range(days)]
 

@@ -25,6 +25,14 @@
     <p class="oauth-loading">Checking authorization status...</p>
   </div>
 </section>
+<section id="email-activity-section" class="email-activity">
+  <h3>Email Activity</h3>
+  <div id="email-activity-content">
+    <div class="activity-loading">
+      <p>Loading recent job activity...</p>
+    </div>
+  </div>
+</section>
 <section class="calendar-shell">
   <header class="calendar-toolbar">
     <div class="calendar-toolbar-info">
@@ -215,7 +223,186 @@
   // Check OAuth status when page loads
   document.addEventListener('DOMContentLoaded', function() {
     checkOAuthStatus();
+    loadEmailActivity();
   });
+
+  // Email Activity management
+  async function loadEmailActivity() {
+    const activityDiv = document.getElementById('email-activity-content');
+    try {
+      const response = await fetch('/api/jobs/recent?limit=10');
+      if (!response.ok) {
+        throw new Error('Failed to load job activity');
+      }
+      const data = await response.json();
+
+      if (data.executions && data.executions.length > 0) {
+        activityDiv.innerHTML = generateActivityHTML(data.executions);
+      } else {
+        activityDiv.innerHTML = `
+          <div class="activity-empty">
+            <p>No recent job activity found.</p>
+            <p>Jobs will appear here once they run automatically or are triggered manually.</p>
+          </div>
+        `;
+      }
+    } catch (error) {
+      console.error('Email activity load failed:', error);
+      activityDiv.innerHTML = `
+        <div class="activity-error">
+          <p>Unable to load email activity.</p>
+        </div>
+      `;
+    }
+  }
+
+  function generateActivityHTML(executions) {
+    let html = '<div class="activity-list">';
+
+    executions.forEach(execution => {
+      const statusClass = getStatusClass(execution.status);
+      const statusIcon = getStatusIcon(execution.status);
+      const duration = execution.duration_formatted || 'Running...';
+      const hasJsonOutput = execution.json_output && Object.keys(execution.json_output).length > 0;
+
+      html += `
+        <div class="activity-item ${statusClass}">
+          <div class="activity-header">
+            <div class="activity-title">
+              <span class="activity-status-icon">${statusIcon}</span>
+              <span class="activity-name">${formatJobName(execution.job_name)}</span>
+              <span class="activity-time">${formatTime(execution.start_time)}</span>
+            </div>
+            <div class="activity-meta">
+              <span class="activity-duration">${duration}</span>
+              ${execution.retry_count > 0 ? `<span class="activity-retries">Retry ${execution.retry_count}</span>` : ''}
+            </div>
+          </div>
+          <div class="activity-details">
+            ${hasJsonOutput ? generateJsonOutput(execution.json_output) : ''}
+            ${execution.error_message ? `<div class="activity-error-msg">${execution.error_message}</div>` : ''}
+          </div>
+          <div class="activity-actions">
+            <button class="activity-logs-btn" onclick="showRawLogs('${execution.job_name}_${execution.start_time}')">
+              View Raw Logs
+            </button>
+          </div>
+        </div>
+      `;
+    });
+
+    html += '</div>';
+    return html;
+  }
+
+  function generateJsonOutput(jsonOutput) {
+    let html = '<div class="activity-json">';
+    if (jsonOutput.date) {
+      html += `<div class="json-field"><strong>Date:</strong> ${jsonOutput.date}</div>`;
+    }
+    if (jsonOutput.selector) {
+      html += `<div class="json-field"><strong>Selector:</strong> ${jsonOutput.selector}</div>`;
+    }
+    if (jsonOutput.weekday) {
+      html += `<div class="json-field"><strong>Weekday:</strong> ${jsonOutput.weekday}</div>`;
+    }
+    if (jsonOutput.content_source) {
+      html += `<div class="json-field"><strong>Source:</strong> ${jsonOutput.content_source}</div>`;
+    }
+    if (jsonOutput.resend) {
+      html += `<div class="json-field"><strong>Resend:</strong> Yes</div>`;
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function formatJobName(jobName) {
+    const nameMap = {
+      'daily_email_send': 'Daily Email Send',
+      'weekly_schedule_summary': 'Weekly Schedule Summary'
+    };
+    return nameMap[jobName] || jobName;
+  }
+
+  function formatTime(isoString) {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  }
+
+  function getStatusClass(status) {
+    switch (status) {
+      case 'success': return 'status-success';
+      case 'failed': return 'status-failed';
+      case 'running': return 'status-running';
+      case 'skipped': return 'status-skipped';
+      default: return 'status-unknown';
+    }
+  }
+
+  function getStatusIcon(status) {
+    switch (status) {
+      case 'success': return '✓';
+      case 'failed': return '✗';
+      case 'running': return '⟳';
+      case 'skipped': return '⊘';
+      default: return '?';
+    }
+  }
+
+  async function showRawLogs(executionId) {
+    try {
+      const response = await fetch(`/api/jobs/logs/${executionId}`);
+      if (!response.ok) {
+        throw new Error('Failed to load logs');
+      }
+      const data = await response.json();
+
+      // Create modal overlay
+      const modal = document.createElement('div');
+      modal.className = 'logs-modal-overlay';
+      modal.innerHTML = `
+        <div class="logs-modal">
+          <div class="logs-modal-header">
+            <h3>Raw Logs: ${formatJobName(data.execution.job_name)}</h3>
+            <button class="logs-modal-close" onclick="this.closest('.logs-modal-overlay').remove()">×</button>
+          </div>
+          <div class="logs-modal-content">
+            <pre class="logs-content">${data.logs.map(line => escapeHtml(line)).join('\n')}</pre>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      // Close on backdrop click
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+          modal.remove();
+        }
+      });
+
+    } catch (error) {
+      console.error('Failed to load logs:', error);
+      alert('Failed to load logs. Check console for details.');
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
 </script>
 <script src="/static/calendar.js" defer></script>
 {% endblock %}

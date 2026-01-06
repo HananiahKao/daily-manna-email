@@ -48,12 +48,20 @@ def test_email_pipeline_e2e_sjzl_mode(mock_get_gmail_service, monkeypatch):
     assert "聖經之旅" in decoded_subject
 
     # Check plain text body
-    plain_text = message.get_payload(0).get_payload(decode=True).decode('utf-8')
+    plain_part = message.get_payload(0)
+    if isinstance(plain_part, str):
+        plain_text = plain_part
+    else:
+        plain_text = plain_part.get_payload(decode=True).decode('utf-8')  # type: ignore
     assert "連結:" in plain_text
     assert len(plain_text) > 100
 
     # Check HTML body
-    html_text = message.get_payload(1).get_payload(decode=True).decode('utf-8')
+    html_part = message.get_payload(1)
+    if isinstance(html_part, str):
+        html_text = html_part
+    else:
+        html_text = html_part.get_payload(decode=True).decode('utf-8')  # type: ignore
     assert "<html>" in html_text
     assert "<h1>" in html_text
 

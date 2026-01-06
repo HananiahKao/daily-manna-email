@@ -5,8 +5,10 @@ Content source implementation for the original ezoe.work site.
 This wraps the existing ezoe_week_scraper.py logic to conform to the new ContentSource interface.
 """
 
+import logging
 import os
 import re
+from typing import Optional
 import content_source
 ContentSource = content_source.ContentSource
 ContentBlock = content_source.ContentBlock
@@ -16,6 +18,8 @@ try:
 except ImportError:
     # Fallback for cases where the original module is not available
     raise RuntimeError("ezoe_week_scraper module not found. Install or symlink it.")
+
+logger = logging.getLogger(__name__)
 
 # Default base URL from original implementation
 DEFAULT_EZOE_BASE = os.getenv("EZOE_BASE", "https://ezoe.work/books/2")
@@ -183,7 +187,7 @@ class EzoeContentSource(ContentSource):
         except Exception:
             return None
 
-    def _ezoe_detect_anchor_id(self, selector: str, base: str) -> str:
+    def _ezoe_detect_anchor_id(self, selector: str, base: str) -> Optional[str]:
         """Best-effort detect the actual day anchor id from the live lesson page."""
         try:
             # Lazy import to avoid hard dependency when selector mode is unused
@@ -227,16 +231,18 @@ class EzoeContentSource(ContentSource):
 
     def validate_lesson_exists(self, volume: int, lesson: int) -> bool:
         """Check if a specific lesson exists and is valid (not a map/manual)."""
+        logger.info(f"Validating lesson {volume}-{lesson} exists at {self.base_url}")
         try:
             import ezoe_week_scraper as ez
+            logger.debug(f"Fetching volume {volume} lessons from {self.base_url}")
             lessons = ez.get_volume_lessons(volume, base=self.base_url)
-            return lesson in lessons
-        except Exception:
-            # Fail open or closed? 
-            # If we can't check, maybe assume valid to avoid blocking?
-            # But the goal is to block invalid ones.
-            # Let's assume False if we can't verify, but log it?
-            # For now, return False to be safe against garbage.
+            logger.debug(f"Found lessons for volume {volume}: {lessons}")
+            exists = lesson in lessons
+            logger.info(f"Lesson {volume}-{lesson} {'exists' if exists else 'not found'}")
+            return exists
+        except Exception as e:
+            logger.warning(f"Failed to validate lesson {volume}-{lesson}: {e}")
+            # Fail closed: assume invalid if we can't check
             return False
 
     def parse_batch_selectors(self, input_text: str) -> list[str]:
@@ -304,4 +310,3 @@ class EzoeContentSource(ContentSource):
             "supports_range": True,
             "range_example": "2-1-15 to 2-1-19",
         }
-

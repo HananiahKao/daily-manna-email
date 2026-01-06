@@ -44,12 +44,52 @@ print(json.loads(os.environ["RESULT_JSON"]).get("weekday", ""))
 PY
 )"
 
+CONTENT_SOURCE="$(RESULT_JSON="$RESULT_JSON" "$PYTHON_BIN" - <<'PY'
+import json, os
+print(json.loads(os.environ["RESULT_JSON"]).get("content_source", "ezoe"))
+PY
+)"
+
 export EZOE_SELECTOR="$SELECTOR"
 
-echo "Sending for $TARGET_DATE ($WEEKDAY_LABEL) selector: $EZOE_SELECTOR"
+echo "Sending for $TARGET_DATE ($WEEKDAY_LABEL) selector: $EZOE_SELECTOR from $CONTENT_SOURCE"
 
 if "$PYTHON_BIN" sjzl_daily_email.py; then
+  # Enhanced JSON output for web app monitoring
+  cat <<EOF
+{
+  "job_type": "daily_email_send",
+  "status": "success",
+  "date": "$TARGET_DATE",
+  "weekday": "$WEEKDAY_LABEL",
+  "selector": "$SELECTOR",
+  "content_source": "$CONTENT_SOURCE",
+  "timestamp": "$(date -Iseconds)",
+  "details": {
+    "action": "sent_daily_email",
+    "recipient_count": "configured_via_env",
+    "content_type": "daily_devotional"
+  }
+}
+EOF
   "$PYTHON_BIN" schedule_tasks.py mark-sent --date "$TARGET_DATE"
 else
+  # Enhanced error JSON output
+  cat <<EOF
+{
+  "job_type": "daily_email_send",
+  "status": "failed",
+  "date": "$TARGET_DATE",
+  "weekday": "$WEEKDAY_LABEL",
+  "selector": "$SELECTOR",
+  "content_source": "$CONTENT_SOURCE",
+  "timestamp": "$(date -Iseconds)",
+  "error": "email_send_failed",
+  "details": {
+    "exit_code": $?,
+    "action": "attempted_send"
+  }
+}
+EOF
   exit 1
 fi

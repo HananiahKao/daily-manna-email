@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from content_source import ContentSource
+
+logger = logging.getLogger(__name__)
 
 try:  # Python 3.9+
     from zoneinfo import ZoneInfo
@@ -144,7 +147,7 @@ class Schedule:
 
     @classmethod
     def from_json(cls, data: Dict[str, object]) -> "Schedule":
-        version = int(data.get("version", VERSION))
+        version = int(data.get("version", VERSION))  # type: ignore
         tz = str(data.get("timezone", TZ_NAME))
         raw_entries = data.get("entries", [])
         entries: List[ScheduleEntry] = []
@@ -255,27 +258,36 @@ def ensure_date_range(
 
     new_entries_added = False
     seed = seed_selector or determine_seed_selector(schedule, source)
+    logger.info(f"Ensuring date range {start_date} to {end_date}, seed selector: {seed}")
 
     pointer_entry = schedule.latest_before(start_date)
     cursor_selector = pointer_entry.selector if pointer_entry else None
+    logger.debug(f"Pointer entry before start: {pointer_entry.selector if pointer_entry else None}")
+
     day_count = (end_date - start_date).days + 1
     for offset in range(day_count):
         date = start_date + dt.timedelta(days=offset)
         existing = schedule.get_entry(date)
         if existing:
             cursor_selector = existing.selector
+            logger.debug(f"Entry exists for {date}: {existing.selector}")
             continue
+
         if cursor_selector is None:
             cursor_selector = seed
+            logger.debug(f"Using seed selector for {date}: {cursor_selector}")
         else:
             cursor_selector = source.advance_selector(cursor_selector)
-            
+            logger.debug(f"Advanced selector for {date}: {cursor_selector}")
+
             # --- Validation Logic ---
             if hasattr(source, "validate_lesson_exists") and hasattr(source, "parse_selector") and hasattr(source, "format_selector"):
                 try:
                     vol, les, day = source.parse_selector(cursor_selector)
+                    logger.debug(f"Parsed selector {cursor_selector} -> vol={vol}, les={les}, day={day}")
                     # Only validate when we start a new lesson (day 1)
                     if day == 1:
+                        logger.info(f"Validating lesson existence for {vol}-{les}")
                         is_valid = source.validate_lesson_exists(vol, les)
                         if not is_valid:
                             # If invalid, roll over to the next volume
@@ -283,15 +295,18 @@ def ensure_date_range(
                             new_les = 1
                             new_day = 1
                             candidate = source.format_selector((new_vol, new_les, new_day))
-                            print(f"DEBUG: Lesson {vol}-{les} invalid, rolling over to {candidate}")
+                            logger.warning(f"Lesson {vol}-{les} not found, rolling over to {candidate}")
                             cursor_selector = candidate
+                        else:
+                            logger.debug(f"Lesson {vol}-{les} exists")
                 except Exception as e:
-                    print(f"WARNING: Validation failed for {cursor_selector}: {e}")
+                    logger.warning(f"Validation failed for {cursor_selector}: {e}")
             # ------------------------
 
         entry = ScheduleEntry(date=date, selector=cursor_selector)
         schedule.upsert_entry(entry)
         new_entries_added = True
+        logger.debug(f"Created entry for {date}: {cursor_selector}")
     return new_entries_added
 
 

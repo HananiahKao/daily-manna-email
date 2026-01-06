@@ -34,6 +34,7 @@ import content_source_factory
 from app.config import AppConfig, get_config
 from app.security import require_user, authenticate_user, login_required, require_user_or_redirect
 from app.oauth_scopes import get_scopes_descriptions
+from app.cron_runner import get_cron_runner, shutdown_cron_runner
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -864,6 +865,109 @@ def create_app() -> FastAPI:
         url = str(request.url_for("dashboard")) + query
         return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
 
+    # Email Activity API endpoints
+    @app.get("/api/jobs/recent", response_class=JSONResponse)
+    def api_jobs_recent(
+        job_name: Optional[str] = None,
+        limit: int = 20,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get recent job executions."""
+        from app.job_tracker import get_job_tracker
+        tracker = get_job_tracker()
+        executions = tracker.get_recent_executions(job_name, limit)
+
+        # Convert to dict format for JSON response
+        result = []
+        for execution in executions:
+            exec_dict = execution.to_dict()
+            # Add formatted duration
+            if execution.duration_seconds:
+                exec_dict["duration_formatted"] = f"{execution.duration_seconds:.1f}s"
+            else:
+                exec_dict["duration_formatted"] = None
+            result.append(exec_dict)
+
+        return JSONResponse({"executions": result})
+
+    @app.get("/api/jobs/stats", response_class=JSONResponse)
+    def api_jobs_stats(
+        job_name: Optional[str] = None,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get job execution statistics."""
+        from app.job_tracker import get_job_tracker
+        tracker = get_job_tracker()
+        stats = tracker.get_job_stats(job_name)
+        return JSONResponse(stats)
+
+    @app.post("/api/jobs/run/{job_name}", response_class=JSONResponse)
+    async def api_run_job_manually(
+        job_name: str,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Manually trigger a job execution."""
+        try:
+            cron_runner = await get_cron_runner()
+            result = await cron_runner.run_job_manually(job_name)
+            if result:
+                return JSONResponse({
+                    "success": True,
+                    "message": f"Job {job_name} triggered successfully",
+                    "execution_id": f"{result.job_name}_{result.start_time.isoformat()}"
+                })
+            else:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown job: {job_name}")
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    @app.get("/api/jobs/status", response_class=JSONResponse)
+    async def api_scheduler_status(
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get scheduler status and upcoming jobs."""
+        try:
+            cron_runner = await get_cron_runner()
+            status = cron_runner.get_scheduler_status()
+            return JSONResponse(status)
+        except Exception as e:
+            return JSONResponse({
+                "running": False,
+                "error": str(e),
+                "jobs": []
+            })
+
+    @app.get("/api/jobs/logs/{execution_id}", response_class=JSONResponse)
+    def api_job_logs(
+        execution_id: str,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get detailed logs for a specific job execution."""
+        from app.job_tracker import get_job_tracker
+        tracker = get_job_tracker()
+
+        # Parse execution_id (format: job_name_timestamp)
+        try:
+            parts = execution_id.rsplit("_", 1)
+            if len(parts) != 2:
+                raise ValueError("Invalid execution ID format")
+            job_name = parts[0]
+            timestamp = parts[1]
+
+            # Find the execution
+            executions = tracker.get_recent_executions(job_name, 100)
+            for execution in executions:
+                if execution.start_time.isoformat() == timestamp:
+                    return JSONResponse({
+                        "execution": execution.to_dict(),
+                        "logs": execution.logs
+                    })
+
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Execution not found")
+
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid execution ID: {str(e)}")
+
     return app
 
 
@@ -935,3 +1039,23 @@ def _get_month_end(year: int, month: int) -> dt.date:
 
 
 app = create_app()
+
+
+# Add startup and shutdown events for cron runner
+@app.on_event("startup")
+async def startup_event():
+    """Initialize cron runner on app startup."""
+    try:
+        cron_runner = await get_cron_runner()
+        # Cron runner starts automatically in get_cron_runner()
+    except Exception as e:
+        print(f"Warning: Failed to start cron runner: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown cron runner on app shutdown."""
+    try:
+        await shutdown_cron_runner()
+    except Exception as e:
+        print(f"Warning: Failed to shutdown cron runner: {e}")

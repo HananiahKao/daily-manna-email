@@ -25,12 +25,16 @@ Notes:
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Optional, List, Tuple
 from urllib.parse import urljoin
 
 import requests
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Tag
+from bs4.element import NavigableString
+
+logger = logging.getLogger(__name__)
 
 HEADERS = {"User-Agent": "daily-manna-ezoe/1.0 (+non-commercial)"}
 REQUEST_TIMEOUT = (10, 20)
@@ -132,18 +136,18 @@ def _collect_until_next_day(start_node: Tag, day_texts: List[str], next_anchor: 
     collected: List[Tag] = []
     node = start_node.next_sibling
     while node is not None:
+        if not isinstance(node, Tag):
+            node = node.next_sibling
+            continue
         # Stop if we reached explicit next anchor
         if next_anchor is not None:
             # If the node is the anchor or contains it, stop
             try:
-                if node is next_anchor or (getattr(node, 'find', None) and node.find(id=next_anchor.get('id'))):
+                next_id = next_anchor.get('id')
+                if node is next_anchor or (next_id and node.find(id=next_id)):
                     break
             except Exception:
                 pass
-        # Skip pure strings between elements
-        if isinstance(node, NavigableString):
-            node = node.next_sibling
-            continue
         txt = _norm_text(node.get_text())
         if next_anchor is None and txt in day_texts:
             break
@@ -227,7 +231,6 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
         # Return the inner HTML of the detected content root (excluding scripts/styles)
         for sel in ["script", "style", "nav", "footer", "iframe"]:
             for t in content_root.select(sel):
-                t.decompile = True
                 t.decompose()
         return str(content_root)
 
@@ -250,7 +253,8 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
     # Determine section title from the day header block if available
     section_title = ""
     try:
-        if anchor and anchor.get("class") and "cn1" in anchor.get("class", []):
+        class_attr = anchor.get("class") if anchor else None
+        if class_attr and isinstance(class_attr, list) and "cn1" in class_attr:
             # Typical structure: <div class="cn1" id="1_8"><div>周三</div> <div>標題</div></div>
             # Gather immediate child divs and use the second one's text as title.
             child_divs = [c for c in anchor.find_all(recursive=False) if isinstance(c, Tag)]
@@ -300,7 +304,7 @@ def get_day_html(selector: str, base: str = "https://ezoe.work/books/2") -> str:
                         t.decompose()
                     except Exception:
                         pass
-        wrapper.append(n)
+            wrapper.append(n)
 
     return str(wrapper)
 
@@ -315,27 +319,34 @@ def get_volume_lessons(volume: int, base: str = "https://ezoe.work/books/2") -> 
     # If base ends with /, strip it.
     base = base.rstrip("/")
     url = f"{base}/2264-{volume}.html"
-    
+    logger.info(f"Fetching volume {volume} page from {url}")
+
     html = _fetch(url)
     if not html:
+        logger.warning(f"Failed to fetch HTML for volume {volume} from {url}")
         return []
 
     soup = BeautifulSoup(html, "html.parser")
     valid_lessons = []
-    
+    total_links = 0
+
     # Regex to match lesson links: 2264-{volume}-{lesson}.html
     link_pattern = re.compile(r"2264-" + str(volume) + r"-(\d+)\.html")
-    
+
     # Regex to identify valid lesson text (must contain "第" and "课")
     # Support both digits and Chinese numerals
     lesson_text_pattern = re.compile(r"第\s*[0-9一二三四五六七八九十百]+\s*课")
 
     for a in soup.find_all("a", href=True):
-        href = a["href"].strip()
+        href_attr = a.get("href")
+        if not isinstance(href_attr, str):
+            continue
+        href = href_attr.strip()
         m = link_pattern.search(href)
         if not m:
             continue
 
+        total_links += 1
         lesson_num = int(m.group(1))
 
         # Get the link text
@@ -367,7 +378,11 @@ def get_volume_lessons(volume: int, base: str = "https://ezoe.work/books/2") -> 
         # This excludes maps, charts, and other non-lesson content.
         if lesson_text_pattern.search(context_text):
             valid_lessons.append(lesson_num)
+            logger.debug(f"Included lesson {lesson_num} with context: {context_text[:50]}...")
+        else:
+            logger.debug(f"Excluded link to lesson {lesson_num} with context: {context_text[:50]}...")
 
+    logger.info(f"Parsed {total_links} links for volume {volume}, found {len(valid_lessons)} valid lessons: {sorted(list(set(valid_lessons)))}")
     return sorted(list(set(valid_lessons)))
 
 

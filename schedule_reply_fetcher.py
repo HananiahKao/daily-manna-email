@@ -66,7 +66,9 @@ def extract_text_body(message: EmailMessage) -> str:
             except Exception:  # pragma: no cover - defensive fallback
                 continue
         try:
-            return message.get_body(preferencelist=("plain", "html")).get_content()
+            body_part = message.get_body(preferencelist=("plain", "html"))
+            if body_part:
+                return body_part.get_content()
         except Exception:  # pragma: no cover - defensive fallback
             pass
     try:
@@ -151,7 +153,7 @@ class ReplyProcessingRecord:
 
     @property
     def has_errors(self) -> bool:
-        return self.error_count > 0 or (self.note is not None and self.note.strip())
+        return self.error_count > 0 or bool(self.note is not None and self.note.strip())
 
 
 @dataclass
