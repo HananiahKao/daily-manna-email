@@ -260,7 +260,6 @@ def _maybe_convert_zh_cn_to_zh_tw(text: str) -> str:
     if not text:
         return text
     try:
-        import sys
         print(f"DEBUG: Converting text length {len(text)}", file=sys.stderr)
         from opencc import OpenCC  # type: ignore
         cc = OpenCC('s2tw')  # Simplified Chinese to Traditional Chinese (Taiwan)
@@ -268,8 +267,8 @@ def _maybe_convert_zh_cn_to_zh_tw(text: str) -> str:
         print(f"DEBUG: Conversion successful, original length {len(text)}, converted length {len(result)}", file=sys.stderr)
         return result
     except Exception as e:
-        import traceback
         print(f"DEBUG: OpenCC conversion failed: {e}", file=sys.stderr)
+        import traceback
         traceback.print_exc(file=sys.stderr)
         logger.error("OpenCC conversion failed: %s, text length: %s", str(e), len(text))
         return text
