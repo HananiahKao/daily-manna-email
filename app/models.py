@@ -6,9 +6,9 @@ Uses SQLAlchemy ORM with support for SQLite (development) and PostgreSQL (produc
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, create_engine
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, create_engine, MetaData
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -36,11 +36,11 @@ class Subscriber(Base):
     @classmethod
     def create_table_if_not_exists(cls, engine):
         """Create the subscribers table if it doesn't exist."""
-        Base.metadata.create_all(engine, tables=[cls.__table__])
+        Base.metadata.create_all(engine, tables=[cls.__table__])  # type: ignore
 
 
 # Database session management
-SessionLocal = None
+SessionLocal: Optional[sessionmaker] = None
 
 
 def init_database(database_url: str) -> None:
@@ -65,7 +65,7 @@ def init_database(database_url: str) -> None:
         )
 
     # Create tables
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine)  # type: ignore
 
     # Create session factory
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

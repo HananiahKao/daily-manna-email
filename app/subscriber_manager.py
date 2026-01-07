@@ -97,11 +97,10 @@ def add_subscriber(email: str, content_source: str) -> Subscriber:
                     continue
 
             # Create new subscriber
-            subscriber = Subscriber(
-                email_encrypted=encrypted_email,
-                content_source=content_source,
-                active=True
-            )
+            subscriber = Subscriber()  # type: ignore
+            subscriber.email_encrypted = encrypted_email
+            subscriber.content_source = content_source
+            subscriber.active = True
             session.add(subscriber)
             session.commit()
             session.refresh(subscriber)
@@ -276,7 +275,7 @@ def list_all_subscribers() -> List[dict]:
 
     with get_db_session() as session:
         try:
-            subscribers = session.query(Subscriber).order_by(
+            subscribers = session.query(Subscriber).order_by(  # type: ignore
                 Subscriber.content_source, Subscriber.subscribed_at
             ).all()
 
@@ -284,7 +283,7 @@ def list_all_subscribers() -> List[dict]:
             for subscriber in subscribers:
                 try:
                     email = decrypt_email(subscriber.email_encrypted)
-                    result.append({
+                    result.append({  # type: ignore
                         "id": subscriber.id,
                         "email": email,
                         "content_source": subscriber.content_source,
