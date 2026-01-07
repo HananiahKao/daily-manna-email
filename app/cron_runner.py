@@ -15,6 +15,7 @@ import os
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import schedule_manager as sm
+import job_dispatcher
 
 from app.job_tracker import get_job_tracker, JobExecutionResult
 
@@ -64,43 +65,116 @@ class CronJobRunner:
 
     def _setup_jobs(self) -> None:
         """Set up the scheduled jobs."""
-        # Daily email send job (6:00 AM Taiwan time)
+        # Load dispatcher rules to get configured job names for logging
+        rules = job_dispatcher.load_rules(job_dispatcher.DEFAULT_CONFIG_PATH)
+        job_names = [rule.name for rule in rules]
+
+        # Hardcoded 10-minute cron daemon - runs continuously and lets dispatcher decide what to execute
         self.scheduler.add_job(
-            self._run_daily_email_job,
-            CronTrigger(hour=6, minute=0, timezone=sm.TAIWAN_TZ),
-            id="daily_email_send",
-            name="Daily Email Send",
+            self._run_dispatcher_trigger,
+            CronTrigger(minute="*/10", timezone=sm.TAIWAN_TZ),
+            id="dispatcher_trigger",
+            name="Job Dispatcher (10min cycle)",
             max_instances=1,
             replace_existing=True
         )
 
-        # Weekly schedule summary job (9:00 PM Sunday Taiwan time)
-        self.scheduler.add_job(
-            self._run_weekly_summary_job,
-            CronTrigger(day_of_week=6, hour=21, minute=0, timezone=sm.TAIWAN_TZ),
-            id="weekly_schedule_summary",
-            name="Weekly Schedule Summary",
-            max_instances=1,
-            replace_existing=True
-        )
+        logger.info(f"Scheduled jobs configured: {', '.join(job_names)}")
 
-        logger.info("Scheduled jobs configured: daily_email_send, weekly_schedule_summary")
+    async def _run_dispatcher_trigger(self) -> None:
+        """Run the job dispatcher to check for and execute any due jobs."""
+        try:
+            # Load current configuration
+            rules = job_dispatcher.load_rules(job_dispatcher.DEFAULT_CONFIG_PATH)
+            state = job_dispatcher.load_state(job_dispatcher.DEFAULT_STATE_PATH)
 
-    async def _run_daily_email_job(self) -> None:
-        """Run the daily email send job."""
+            # Get current time in Taiwan timezone
+            now = dt.datetime.now(tz=sm.TAIWAN_TZ)
+
+            # Max delay for our frequent checking system (30 minutes)
+            max_delay = dt.timedelta(minutes=30)
+
+            # Run dispatcher - this will execute any jobs that are due
+            executed_jobs = job_dispatcher.dispatch(rules, now, state, max_delay)
+
+            # Track each executed job individually in the job tracker
+            for job_name in executed_jobs:
+                # Find the rule to get retry config and command info
+                rule = next((r for r in rules if r.name == job_name), None)
+                if not rule:
+                    logger.warning(f"Executed job {job_name} not found in rules - skipping tracking")
+                    continue
+
+                # Start tracking this specific job
+                max_retries = 3  # Default, could be made configurable per job
+                job_result = self.job_tracker.start_job(job_name, max_retries)
+
+                try:
+                    logger.info(f"Job {job_name} completed successfully")
+                    job_result.logs.append(f"Job {job_name} executed by dispatcher")
+
+                    # For successful jobs, we don't have detailed command output
+                    # since the dispatcher handles the execution internally
+                    self.job_tracker.update_job(
+                        job_result,
+                        status="success",
+                        exit_code=0,
+                        json_output=None,
+                        metadata={
+                            "executed_by": "dispatcher",
+                            "scheduled_time": now.isoformat(),
+                            "commands": [" ".join(cmd) for cmd in rule.commands]
+                        }
+                    )
+
+                except Exception as e:
+                    error_msg = f"Job {job_name} failed during tracking: {str(e)}"
+                    logger.error(error_msg)
+                    self.job_tracker.update_job(
+                        job_result,
+                        status="failed",
+                        error_message=error_msg,
+                        logs=[error_msg]
+                    )
+
+            # Save updated state after all executions
+            if executed_jobs:
+                job_dispatcher.save_state(job_dispatcher.DEFAULT_STATE_PATH, state)
+
+            if executed_jobs:
+                logger.info(f"Dispatcher executed jobs: {', '.join(executed_jobs)}")
+            else:
+                logger.debug("Dispatcher check completed - no jobs due")
+
+        except Exception as e:
+            logger.error(f"Dispatcher trigger failed: {str(e)}")
+            # Don't track dispatcher failures as individual job failures
+            # since this is an internal cron mechanism
+
+    async def _execute_job_from_rule(self, job_name: str, rule: job_dispatcher.DispatchRule) -> None:
+        """Execute a job from a dispatcher rule with tracking and retry logic.
+
+        Args:
+            job_name: Name of the job for tracking
+            rule: DispatchRule containing the commands to execute
+        """
+        # Use the first command from the rule (most jobs have one command)
+        if not rule.commands:
+            logger.error(f"Job {job_name} has no commands to execute")
+            return
+
+        # For manual execution, just run the first command
+        # (Most jobs have a single command, but dispatcher supports multiple)
+        command = list(rule.commands[0])
+
         await self._execute_job(
-            job_name="daily_email_send",
-            command=[str(self.project_root / "scripts" / "run_daily_stateful_ezoe.sh")],
-            max_retries=3
+            job_name=job_name,
+            command=command,
+            max_retries=3,  # Default retries
+            timeout=600  # 10 minutes
         )
 
-    async def _run_weekly_summary_job(self) -> None:
-        """Run the weekly schedule summary job."""
-        await self._execute_job(
-            job_name="weekly_schedule_summary",
-            command=[str(self.project_root / "scripts" / "run_weekly_schedule_summary.sh")],
-            max_retries=2
-        )
+
 
     async def _execute_job(
         self,
@@ -255,15 +329,17 @@ class CronJobRunner:
         Returns:
             JobExecutionResult if job exists, None otherwise
         """
-        if job_name == "daily_email_send":
-            await self._run_daily_email_job()
-            return self.job_tracker.get_recent_executions(job_name, limit=1)[0] if self.job_tracker.get_recent_executions(job_name, limit=1) else None
-        elif job_name == "weekly_schedule_summary":
-            await self._run_weekly_summary_job()
-            return self.job_tracker.get_recent_executions(job_name, limit=1)[0] if self.job_tracker.get_recent_executions(job_name, limit=1) else None
+        # Load dispatcher rules to find the requested job
+        rules = job_dispatcher.load_rules(job_dispatcher.DEFAULT_CONFIG_PATH)
+        rule = next((r for r in rules if r.name == job_name), None)
 
-        logger.warning(f"Unknown job name: {job_name}")
-        return None
+        if not rule:
+            logger.warning(f"Unknown job name: {job_name}")
+            return None
+
+        # Execute the job's commands manually with tracking
+        await self._execute_job_from_rule(job_name, rule)
+        return self.job_tracker.get_recent_executions(job_name, limit=1)[0] if self.job_tracker.get_recent_executions(job_name, limit=1) else None
 
     def get_scheduler_status(self) -> Dict[str, Any]:
         """Get the current status of the scheduler."""
