@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import base64
-from oauth_utils import get_gmail_service
+from oauth_utils import get_gmail_service, has_readonly_scope
 import json
 import os
 from dataclasses import dataclass, field
@@ -308,6 +308,25 @@ def process_mailbox(
     schedule_path: Optional[Path] = None,
     now: Optional[dt.datetime] = None,
 ) -> ProcessingSummary:
+    # Check if Gmail readonly scope is available
+    if not has_readonly_scope():
+        summary = ProcessingSummary(run_at=now or dt.datetime.now(tz=sm.TAIWAN_TZ))
+        record = ReplyProcessingRecord(
+            uid="scope_check",
+            subject="OAuth Scope Check",
+            from_address="system",
+            message_id="scope-check",
+            received_at=summary.run_at,
+            instruction_count=0,
+            applied_count=0,
+            error_count=0,
+            schedule_changed=False,
+            confirmation_sent=False,
+            note="Schedule reply features disabled - 'View your email messages and settings' permission not granted. Only 'Send email on your behalf' permission is available."
+        )
+        summary.records.append(record)
+        return summary
+
     schedule_path = schedule_path or sm.get_schedule_path()
     schedule = sm.load_schedule(schedule_path)
     summary = ProcessingSummary(run_at=now or dt.datetime.now(tz=sm.TAIWAN_TZ))

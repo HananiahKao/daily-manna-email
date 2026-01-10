@@ -165,12 +165,18 @@
           <p class="oauth-authorized">
             ✓ You have authorized the app to use your email
           </p>
+          <p style="font-size: 0.9em; color: #6b7280; margin: 1rem 0 0;">
+            Email sending and schedule reply features are available
+          </p>
         `;
       } else if (data.authorized && data.scope_status === 'over-authorized') {
         const extraScopesDescriptions = data.extra_scopes_descriptions || [];
         statusDiv.innerHTML = `
           <div class="oauth-over-authorized">
             <p>✓ Authorized with additional permissions</p>
+            <p style="font-size: 0.9em; color: #6b7280; margin: 1rem 0 0;">
+              Email sending and schedule reply features are available
+            </p>
             <p style="font-size: 0.9em; color: #6b7280; margin: 0.5rem 0;">
               Additional permissions: ${extraScopesDescriptions.join(', ')}
             </p>
@@ -182,14 +188,34 @@
             </a>
           </div>
         `;
-      } else if (data.scope_status === 'under-authorized' || (data.missing_scopes && data.missing_scopes.length > 0)) {
-        // Token exists but missing required scopes
+      } else if (data.authorized && data.scope_status === 'partial') {
+        // Partial permissions - show available and disabled features
+        const availableFeatures = data.available_features || [];
+        const disabledFeatures = data.disabled_features || [];
         const missingScopesDescriptions = data.missing_scopes_descriptions || [];
-        const missingList = missingScopesDescriptions.length > 0 ? ` (${missingScopesDescriptions.join(', ')})` : '';
+
+        let featuresHtml = '';
+        if (availableFeatures.length > 0) {
+          featuresHtml += `<p style="font-size: 0.9em; color: #059669; margin: 0.5rem 0;">✓ Available: ${availableFeatures.join(', ')}</p>`;
+        }
+        if (disabledFeatures.length > 0) {
+          featuresHtml += `<p style="font-size: 0.9em; color: #dc2626; margin: 0.5rem 0;">✗ Disabled: ${disabledFeatures.join(', ')}</p>`;
+        }
+        if (missingScopesDescriptions.length > 0) {
+          featuresHtml += `<p style="font-size: 0.9em; color: #6b7280; margin: 0.5rem 0;">Missing permissions: ${missingScopesDescriptions.join(', ')}</p>`;
+        }
+
         statusDiv.innerHTML = `
-          <div class="oauth-under-authorized">
-            <p>❌ Email authorization incomplete - missing required permissions${missingList}</p>
-            <a href="/oauth/start" class="oauth-grant-btn">Grant Required Access</a>
+          <div class="oauth-partial">
+            <p>⚠️ Partial email authorization</p>
+            ${featuresHtml}
+            <p style="font-size: 0.9em; color: #6b7280; margin: 0.5rem 0 1rem;">
+              Some features are disabled due to limited permissions. You can grant full access for all features.
+            </p>
+            <a href="/oauth/start" class="oauth-grant-btn">Grant Full Access</a>
+            <a href="https://myaccount.google.com/permissions" target="_blank" class="oauth-manage-btn" style="margin-left: 0.5rem;">
+              Manage Permissions
+            </a>
           </div>
         `;
       } else {

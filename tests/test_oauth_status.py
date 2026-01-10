@@ -88,9 +88,9 @@ def test_oauth_status_invalid_token():
 
             assert response.status_code == 200
             data = response.json()
-            assert data["authorized"] == False
-            assert data["status"] == "insufficient"
-            assert data["scope_status"] == "under-authorized"
+            assert data["authorized"] == True
+            assert data["status"] == "authorized"
+            assert data["scope_status"] == "partial"
             print("✓ Test passed: Invalid token detection")
 
     finally:
@@ -238,14 +238,14 @@ def test_oauth_status_under_authorized():
 
             assert response.status_code == 200
             data = response.json()
-            assert data["authorized"] == False
-            assert data["status"] == "insufficient"
-            assert data["scope_status"] == "under-authorized"
+            assert data["authorized"] == True
+            assert data["status"] == "authorized"
+            assert data["scope_status"] == "partial"
             assert "missing_scopes" in data
             assert "missing_scopes_descriptions" in data
             assert len(data["missing_scopes_descriptions"]) == 1  # Missing gmail.readonly
             assert "View your email messages and settings" in data["missing_scopes_descriptions"]
-            print("✓ Test passed: Under-authorized token with user-friendly descriptions")
+            print("✓ Test passed: Partial authorization with user-friendly descriptions")
 
     finally:
         # Clean up
