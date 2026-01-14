@@ -182,3 +182,353 @@ def test_batch_delete_entries_api(dashboard_client):
         json=[d.isoformat() for d in dates_to_delete]  # These were already deleted
     )
     assert response.status_code == 404
+
+
+def test_upsert_entry_api_create(dashboard_client):
+    """Test creating a new entry via API."""
+    client, schedule_path, base_date = dashboard_client
+    new_date = base_date + dt.timedelta(days=7)  # Next Monday
+
+    # Create new entry
+    response = client.post(
+        "/api/entry",
+        headers=_auth_header(),
+        json={
+            "date": new_date.isoformat(),
+            "selector": "2-10-2",
+            "status": "pending",
+            "notes": "Test entry"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["created"] == True
+    assert data["entry"]["selector"] == "2-10-2"
+    assert data["entry"]["status"] == "pending"
+    assert data["entry"]["notes"] == "Test entry"
+
+    # Verify entry was created in schedule
+    schedule = sm.load_schedule(schedule_path)
+    entry = schedule.get_entry(new_date)
+    assert entry is not None
+    assert entry.selector == "2-10-2"
+    assert entry.status == "pending"
+    assert entry.notes == "Test entry"
+
+
+def test_upsert_entry_api_update(dashboard_client):
+    """Test updating an existing entry via API."""
+    client, schedule_path, base_date = dashboard_client
+
+    # Update existing entry
+    response = client.post(
+        "/api/entry",
+        headers=_auth_header(),
+        json={
+            "date": base_date.isoformat(),
+            "selector": "2-10-3",
+            "status": "sent",
+            "notes": "Updated notes"
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["created"] == False
+    assert data["entry"]["selector"] == "2-10-3"
+    assert data["entry"]["status"] == "sent"
+    assert data["entry"]["notes"] == "Updated notes"
+
+    # Verify entry was updated in schedule
+    schedule = sm.load_schedule(schedule_path)
+    entry = schedule.get_entry(base_date)
+    assert entry is not None
+    assert entry.selector == "2-10-3"
+    assert entry.status == "sent"
+    assert entry.notes == "Updated notes"
+
+
+def test_upsert_entry_api_requires_selector_for_new(dashboard_client):
+    """Test that creating a new entry requires a selector."""
+    client, schedule_path, base_date = dashboard_client
+    new_date = base_date + dt.timedelta(days=7)
+
+    response = client.post(
+        "/api/entry",
+        headers=_auth_header(),
+        json={"date": new_date.isoformat(), "status": "pending"}
+    )
+    assert response.status_code == 400
+    assert "Selector required" in response.json()["detail"]
+
+
+def test_move_single_entry_api(dashboard_client):
+    """Test moving a single entry to a new date."""
+    client, schedule_path, base_date = dashboard_client
+    target_date = base_date + dt.timedelta(days=7)  # Next Monday
+
+    # Move entry
+    response = client.post(
+        f"/api/entry/{base_date.isoformat()}/move",
+        headers=_auth_header(),
+        json={"new_date": target_date.isoformat()}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["entry"]["date"] == target_date.isoformat()
+
+    # Verify entry moved in schedule
+    schedule = sm.load_schedule(schedule_path)
+    assert schedule.get_entry(base_date) is None
+    entry = schedule.get_entry(target_date)
+    assert entry is not None
+    assert entry.selector == "2-10-1"
+
+
+def test_move_single_entry_api_conflict(dashboard_client):
+    """Test that moving to an occupied date fails."""
+    client, schedule_path, base_date = dashboard_client
+    conflict_date = base_date + dt.timedelta(days=1)
+
+    # Create entry at conflict date
+    schedule = sm.load_schedule(schedule_path)
+    schedule.upsert_entry(sm.ScheduleEntry(date=conflict_date, selector="2-10-2"))
+    sm.save_schedule(schedule, schedule_path)
+
+    # Try to move to occupied date
+    response = client.post(
+        f"/api/entry/{base_date.isoformat()}/move",
+        headers=_auth_header(),
+        json={"new_date": conflict_date.isoformat()}
+    )
+    assert response.status_code == 400
+    assert "already has an entry" in response.json()["detail"]
+
+
+def test_move_multiple_entries_api(dashboard_client):
+    """Test moving multiple entries by date offset."""
+    client, schedule_path, base_date = dashboard_client
+
+    # Add another entry
+    second_date = base_date + dt.timedelta(days=1)
+    schedule = sm.load_schedule(schedule_path)
+    schedule.upsert_entry(sm.ScheduleEntry(date=second_date, selector="2-10-2"))
+    sm.save_schedule(schedule, schedule_path)
+
+    # Move both entries by 7 days
+    target_date = base_date + dt.timedelta(days=7)
+    response = client.post(
+        "/api/entries/move",
+        headers=_auth_header(),
+        json={
+            "source_dates": [base_date.isoformat(), second_date.isoformat()],
+            "target_date": target_date.isoformat()
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["entries"]) == 2
+
+    # Verify entries moved
+    schedule = sm.load_schedule(schedule_path)
+    assert schedule.get_entry(base_date) is None
+    assert schedule.get_entry(second_date) is None
+    assert schedule.get_entry(target_date) is not None
+    assert schedule.get_entry(target_date + dt.timedelta(days=1)) is not None
+
+
+def test_batch_update_entries_api(dashboard_client):
+    """Test batch updating multiple entries."""
+    client, schedule_path, base_date = dashboard_client
+
+    # Add entries to update
+    dates_to_update = [base_date + dt.timedelta(days=i) for i in range(1, 4)]
+    schedule = sm.load_schedule(schedule_path)
+    for date in dates_to_update:
+        schedule.upsert_entry(sm.ScheduleEntry(date=date, selector="2-10-1"))
+    sm.save_schedule(schedule, schedule_path)
+
+    # Batch update entries
+    updates = [
+        {
+            "date": base_date.isoformat(),
+            "status": "sent",
+            "notes": "Updated via batch"
+        },
+        {
+            "date": dates_to_update[0].isoformat(),
+            "selector": "2-10-3",
+            "status": "pending"
+        }
+    ]
+
+    response = client.post(
+        "/api/entries/batch",
+        headers=_auth_header(),
+        json={"entries": updates}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["entries"]) == 2
+
+    # Verify updates
+    schedule = sm.load_schedule(schedule_path)
+    entry1 = schedule.get_entry(base_date)
+    assert entry1 is not None
+    assert entry1.status == "sent"
+    assert entry1.notes == "Updated via batch"
+
+    entry2 = schedule.get_entry(dates_to_update[0])
+    assert entry2 is not None
+    assert entry2.selector == "2-10-3"
+    assert entry2.status == "pending"
+
+
+def test_batch_edit_config_api(dashboard_client):
+    """Test getting batch edit configuration."""
+    client, _schedule_path, _base_date = dashboard_client
+
+    response = client.get("/api/batch-edit/config", headers=_auth_header())
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should return source configuration
+    assert "source_name" in data
+    assert "ui_config" in data
+
+
+def test_parse_batch_selectors_api(dashboard_client):
+    """Test parsing batch selectors."""
+    client, _schedule_path, _base_date = dashboard_client
+
+    # Test valid batch input
+    response = client.post(
+        "/api/batch-edit/parse-selectors",
+        headers=_auth_header(),
+        json={"input_text": "2-10-1\n2-10-2\n2-10-3"}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] == True
+    assert len(data["selectors"]) == 3
+    assert data["count"] == 3
+
+
+def test_parse_batch_selectors_api_invalid(dashboard_client):
+    """Test parsing invalid batch selectors."""
+    client, _schedule_path, _base_date = dashboard_client
+
+    response = client.post(
+        "/api/batch-edit/parse-selectors",
+        headers=_auth_header(),
+        json={"input_text": "invalid-selector"}
+    )
+    assert response.status_code == 400
+    assert "detail" in response.json()
+
+
+def test_week_api(dashboard_client):
+    """Test the week API endpoint."""
+    client, schedule_path, base_date = dashboard_client
+
+    # Get the week containing base_date
+    response = client.get("/api/week", headers=_auth_header())
+    assert response.status_code == 200
+    data = response.json()
+
+    # Should return 7 days of entries
+    assert len(data["entries"]) == 7
+    assert data["start"] == (base_date - dt.timedelta(days=base_date.weekday())).isoformat()
+    assert data["end"] == (base_date - dt.timedelta(days=base_date.weekday()) + dt.timedelta(days=6)).isoformat()
+
+    # Check that our base_date entry is in the response
+    entry_found = False
+    for entry in data["entries"]:
+        if entry["date"] == base_date.isoformat():
+            assert entry["selector"] == "2-10-1"
+            entry_found = True
+            break
+    assert entry_found
+
+
+def test_healthz_endpoint(dashboard_client):
+    """Test health check endpoint."""
+    client, _schedule_path, _base_date = dashboard_client
+
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    data = response.json()
+    assert data == {"status": "ok"}
+
+
+def test_root_page(dashboard_client):
+    """Test root page rendering."""
+    client, _schedule_path, _base_date = dashboard_client
+
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+
+
+def test_login_form_page(dashboard_client):
+    """Test login form page rendering."""
+    client, _schedule_path, _base_date = dashboard_client
+
+    response = client.get("/login-form")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+
+
+def test_login_success(dashboard_client):
+    """Test successful login."""
+    client, _schedule_path, _base_date = dashboard_client
+
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": "secret", "next": "/dashboard"},
+        follow_redirects=False
+    )
+    assert response.status_code == 302
+    assert "/dashboard" in response.headers["location"]
+
+
+def test_login_failure(dashboard_client):
+    """Test failed login."""
+    client, _schedule_path, _base_date = dashboard_client
+
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": "wrong", "next": "/dashboard"}
+    )
+    assert response.status_code == 401
+    assert "Invalid credentials" in response.text
+
+
+def test_logout(dashboard_client):
+    """Test logout functionality."""
+    client, _schedule_path, _base_date = dashboard_client
+
+    # First login
+    client.post("/login", data={"username": "admin", "password": "secret"})
+
+    # Then logout
+    response = client.post("/logout", follow_redirects=False)
+    assert response.status_code == 302
+    assert "/" in response.headers["location"]
+
+
+def test_privacy_policy_page(dashboard_client):
+    """Test privacy policy page."""
+    client, _schedule_path, _base_date = dashboard_client
+
+    response = client.get("/privacy-policy")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+
+
+def test_terms_of_service_page(dashboard_client):
+    """Test terms of service page."""
+    client, _schedule_path, _base_date = dashboard_client
+
+    response = client.get("/terms-of-service")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]

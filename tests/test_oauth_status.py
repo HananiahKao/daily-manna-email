@@ -252,6 +252,116 @@ def test_oauth_status_under_authorized():
         if fake_token_path.exists():
             fake_token_path.unlink()
 
+def test_oauth_start_requires_auth():
+    """Test that OAuth start requires authentication."""
+    os.environ["ADMIN_DASHBOARD_USER"] = "admin"
+    os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
+
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.get("/oauth/start", follow_redirects=False)
+    assert response.status_code == 302
+    assert "login-form" in response.headers["location"]
+
+
+def test_oauth_start_missing_client_secret():
+    """Test OAuth start when client secret is missing."""
+    os.environ["ADMIN_DASHBOARD_USER"] = "admin"
+    os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
+
+    # Temporarily rename client_secret.json if it exists
+    client_secret_path = PROJECT_ROOT / "client_secret.json"
+    backup_path = PROJECT_ROOT / "client_secret.json.backup"
+    client_secret_existed = client_secret_path.exists()
+
+    if client_secret_existed:
+        client_secret_path.rename(backup_path)
+
+    try:
+        app = create_app()
+        client = TestClient(app)
+
+        # Login first
+        client.post("/login", data={"username": "admin", "password": "secret"})
+
+        response = client.get("/oauth/start", follow_redirects=False)
+        assert response.status_code == 302
+        assert "error=OAuth%20client%20secret%20not%20found" in response.headers["location"]
+
+    finally:
+        # Restore original client_secret.json if it existed
+        if client_secret_existed and backup_path.exists():
+            backup_path.rename(client_secret_path)
+
+
+def test_oauth_callback_requires_auth():
+    """Test that OAuth callback requires authentication."""
+    os.environ["ADMIN_DASHBOARD_USER"] = "admin"
+    os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
+
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.get("/oauth/callback?code=test&state=test", follow_redirects=False)
+    assert response.status_code == 302
+    assert "login-form" in response.headers["location"]
+
+
+def test_oauth_callback_missing_params():
+    """Test OAuth callback with missing required parameters."""
+    os.environ["ADMIN_DASHBOARD_USER"] = "admin"
+    os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
+
+    app = create_app()
+    client = TestClient(app)
+
+    # Login first
+    client.post("/login", data={"username": "admin", "password": "secret"})
+
+    # Test missing code
+    response = client.get("/oauth/callback?state=test", follow_redirects=False)
+    assert response.status_code == 302
+    assert "error=Missing%20authorization%20parameters" in response.headers["location"]
+
+    # Test missing state
+    response = client.get("/oauth/callback?code=test", follow_redirects=False)
+    assert response.status_code == 302
+    assert "error=Missing%20authorization%20parameters" in response.headers["location"]
+
+
+def test_oauth_callback_access_denied():
+    """Test OAuth callback when user denies access."""
+    os.environ["ADMIN_DASHBOARD_USER"] = "admin"
+    os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
+
+    app = create_app()
+    client = TestClient(app)
+
+    # Login first
+    client.post("/login", data={"username": "admin", "password": "secret"})
+
+    response = client.get("/oauth/callback?error=access_denied", follow_redirects=False)
+    assert response.status_code == 302
+    assert "error=Authorization%20was%20denied" in response.headers["location"]
+
+
+def test_oauth_callback_state_mismatch():
+    """Test OAuth callback with state mismatch (CSRF protection)."""
+    os.environ["ADMIN_DASHBOARD_USER"] = "admin"
+    os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
+
+    app = create_app()
+    client = TestClient(app)
+
+    # Login first
+    client.post("/login", data={"username": "admin", "password": "secret"})
+
+    response = client.get("/oauth/callback?code=test&state=wrong_state", follow_redirects=False)
+    assert response.status_code == 302
+    assert "error=OAuth%20state%20mismatch" in response.headers["location"]
+
+
 if __name__ == "__main__":
     print("Testing oauth_status endpoint with tokeninfo validation...")
     test_oauth_status_no_token_file()
@@ -259,4 +369,11 @@ if __name__ == "__main__":
     test_oauth_status_valid_token()
     test_oauth_status_over_authorized()
     test_oauth_status_under_authorized()
+    print("Testing OAuth flow endpoints...")
+    test_oauth_start_requires_auth()
+    test_oauth_start_missing_client_secret()
+    test_oauth_callback_requires_auth()
+    test_oauth_callback_missing_params()
+    test_oauth_callback_access_denied()
+    test_oauth_callback_state_mismatch()
     print("All tests passed! ✅")
