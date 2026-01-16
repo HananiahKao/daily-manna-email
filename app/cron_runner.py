@@ -162,10 +162,18 @@ class CronJobRunner:
             max_retries: Maximum number of retries
             timeout: Command timeout in seconds
         """
+        # Create job result once for all attempts - logs will accumulate
+        job_result = self.job_tracker.start_job(job_name, max_retries)
+
         for attempt in range(max_retries + 1):  # +1 for initial attempt
             attempt_info = f"Attempt {attempt + 1}/{max_retries + 1}" if attempt > 0 else None
             try:
-                await self._execute_job_single_attempt(job_name, command, timeout, attempt_info)
+                await self._execute_job_single_attempt(
+                    command=command,
+                    timeout=timeout,
+                    attempt_info=attempt_info,
+                    job_result=job_result
+                )
                 return  # Success - exit retry loop
             except Exception as e:
                 if attempt < max_retries:
@@ -177,23 +185,32 @@ class CronJobRunner:
 
     async def _execute_job_single_attempt(
         self,
-        job_name: str,
         command: List[str],
         timeout: int = 600,
-        attempt_info: Optional[str] = None
+        attempt_info: Optional[str] = None,
+        job_result: Optional[JobExecutionResult] = None,
+        job_name: Optional[str] = None
     ) -> None:
         """Execute a single job attempt without retries.
 
         Args:
-            job_name: Name of the job for tracking
             command: Command to execute
             timeout: Command timeout in seconds
             attempt_info: Optional retry attempt marker (e.g., "Attempt 2/4")
+            job_result: Existing JobExecutionResult to accumulate logs into (for retries)
+            job_name: Job name for single attempts (when job_result is None)
 
         Raises:
             Exception: If the job execution fails
         """
-        job_result = self.job_tracker.start_job(job_name, 0)  # No retries for single attempt
+        if job_result is not None:
+            # Retry scenario: use existing job result
+            job_name = job_result.job_name
+        elif job_name is not None:
+            # Single attempt scenario: create new job result
+            job_result = self.job_tracker.start_job(job_name, 0)
+        else:
+            raise ValueError("Either job_result or job_name must be provided")
 
         try:
             logger.info(f"Starting job: {job_name}")
