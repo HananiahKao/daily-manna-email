@@ -215,7 +215,9 @@ class CronJobRunner:
         try:
             logger.info(f"Starting job: {job_name}")
             if attempt_info:
+                job_result.logs.append("")
                 job_result.logs.append(f"=== {attempt_info} ===")
+                job_result.logs.append("")
             job_result.logs.append(f"Starting job: {job_name}")
             job_result.logs.append(f"Command: {' '.join(command)}")
 
