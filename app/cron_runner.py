@@ -163,12 +163,13 @@ class CronJobRunner:
             timeout: Command timeout in seconds
         """
         for attempt in range(max_retries + 1):  # +1 for initial attempt
+            attempt_info = f"Attempt {attempt + 1}/{max_retries + 1}" if attempt > 0 else None
             try:
-                await self._execute_job_single_attempt(job_name, command, timeout)
+                await self._execute_job_single_attempt(job_name, command, timeout, attempt_info)
                 return  # Success - exit retry loop
             except Exception as e:
                 if attempt < max_retries:
-                    logger.info(f"Job {job_name} failed (attempt {attempt + 1}/{max_retries + 1}), retrying in 60 seconds")
+                    logger.info(f"Job {job_name} failed ({attempt_info or 'initial'}), retrying in 60 seconds")
                     await asyncio.sleep(60)  # Wait 1 minute before retry
                 else:
                     logger.error(f"Job {job_name} failed permanently after {max_retries + 1} attempts")
@@ -178,7 +179,8 @@ class CronJobRunner:
         self,
         job_name: str,
         command: List[str],
-        timeout: int = 600
+        timeout: int = 600,
+        attempt_info: Optional[str] = None
     ) -> None:
         """Execute a single job attempt without retries.
 
@@ -186,6 +188,7 @@ class CronJobRunner:
             job_name: Name of the job for tracking
             command: Command to execute
             timeout: Command timeout in seconds
+            attempt_info: Optional retry attempt marker (e.g., "Attempt 2/4")
 
         Raises:
             Exception: If the job execution fails
@@ -194,6 +197,8 @@ class CronJobRunner:
 
         try:
             logger.info(f"Starting job: {job_name}")
+            if attempt_info:
+                job_result.logs.append(f"=== {attempt_info} ===")
             job_result.logs.append(f"Starting job: {job_name}")
             job_result.logs.append(f"Command: {' '.join(command)}")
 
