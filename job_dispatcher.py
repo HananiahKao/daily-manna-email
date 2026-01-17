@@ -8,7 +8,7 @@ Usage:
     python job_dispatcher.py --show-config   # print the active config (JSON)
 
 The dispatcher can read custom rules from a JSON file (default:
-`state/dispatch_rules.json`). When no file exists it falls back to defaults that
+`config/dispatch_rules.json`). When no file exists it falls back to defaults that
 cover the daily send and weekly summary jobs.
 """
 
@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -26,8 +27,10 @@ from typing import Dict, Iterable, List, Optional, Sequence
 
 import schedule_manager as sm
 
+logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = Path(os.getenv("DISPATCH_CONFIG", "state/dispatch_rules.json"))
+
+DEFAULT_CONFIG_PATH = Path(os.getenv("DISPATCH_CONFIG", "config/dispatch_rules.json"))
 DEFAULT_STATE_PATH = Path(os.getenv("DISPATCH_STATE_FILE", "state/dispatch_state.json"))
 DEFAULT_DAILY_TIME = os.getenv("DISPATCH_DAILY_TIME", "06:00")
 DEFAULT_SUMMARY_TIME = os.getenv("DISPATCH_SUMMARY_TIME", "21:00")
@@ -207,30 +210,58 @@ def _should_run(
 def _run_command(cmd: Sequence[str], dry_run: bool) -> None:
     display = " ".join(cmd)
     if dry_run:
-        print(f"[dry-run] {display}")
+        logger.info(f"Dry-run: {display}")
         return
-    print(f"[dispatcher] running: {display}")
+    logger.info(f"Running command: {display}")
     subprocess.run(cmd, check=True)
 
 
-def dispatch(
+def get_jobs_to_run(
     rules: Sequence[DispatchRule],
     now: dt.datetime,
     state: Dict[str, str],
     max_delay: dt.timedelta,
-    dry_run: bool = False,
-    runner=_run_command,
-) -> List[str]:
-    executed: List[str] = []
+) -> List[DispatchRule]:
+    """Return jobs that should run based on schedule and state, without executing them.
+
+    Args:
+        rules: List of DispatchRule objects
+        now: Current datetime
+        state: Current dispatch state (last run times)
+        max_delay: Maximum allowed delay for job execution
+
+    Returns:
+        List of DispatchRule objects that should be executed
+    """
+    jobs_to_run = []
     for rule in rules:
         last_run = _parse_iso_datetime(state.get(rule.name))
-        if not _should_run(rule, now, last_run, max_delay):
-            continue
-        for cmd in rule.commands:
-            runner(cmd, dry_run)
-        state[rule.name] = now.astimezone(sm.TAIWAN_TZ).isoformat()
-        executed.append(rule.name)
-    return executed
+        if _should_run(rule, now, last_run, max_delay):
+            jobs_to_run.append(rule)
+    return jobs_to_run
+
+
+def update_job_run_time(
+    state: Dict[str, str],
+    job_name: str,
+    run_time: Optional[dt.datetime] = None
+) -> Dict[str, str]:
+    """Update the last run time for a job in the dispatch state.
+
+    Args:
+        state: Current dispatch state dictionary
+        job_name: Name of the job to update
+        run_time: Time of execution (defaults to current time)
+
+    Returns:
+        Updated state dictionary (modified in-place)
+    """
+    if run_time is None:
+        run_time = dt.datetime.now(tz=sm.TAIWAN_TZ)
+    state[job_name] = run_time.isoformat()
+    return state
+
+
 
 
 def _format_rules_for_print(rules: Sequence[DispatchRule]) -> str:
@@ -245,56 +276,3 @@ def _format_rules_for_print(rules: Sequence[DispatchRule]) -> str:
             }
         )
     return json.dumps(payload, ensure_ascii=False, indent=2)
-
-
-def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Dispatch scheduled jobs based on Taiwan time.")
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH, help="Path to JSON config.")
-    parser.add_argument("--state-file", type=Path, default=DEFAULT_STATE_PATH, help="Where to track last runs.")
-    parser.add_argument(
-        "--max-delay-minutes",
-        type=int,
-        default=180,
-        help="Skip jobs that are older than this delay window.",
-    )
-    parser.add_argument("--dry-run", action="store_true", help="Log actions without executing commands.")
-    parser.add_argument("--show-config", action="store_true", help="Print the active rules and exit.")
-    parser.add_argument("--now", type=str, help="Override the current time (ISO 8601 in Taiwan time).")
-    return parser.parse_args(argv)
-
-
-def _resolve_now(now_arg: Optional[str]) -> dt.datetime:
-    if now_arg:
-        parsed = dt.datetime.fromisoformat(now_arg)
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=sm.TAIWAN_TZ)
-        return parsed.astimezone(sm.TAIWAN_TZ)
-    return dt.datetime.now(tz=sm.TAIWAN_TZ)
-
-
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    args = parse_args(argv)
-    now = _resolve_now(args.now)
-    rules = load_rules(args.config)
-    if args.show_config:
-        print(_format_rules_for_print(rules))
-        return 0
-
-    state = load_state(args.state_file)
-    max_delay = dt.timedelta(minutes=args.max_delay_minutes)
-    try:
-        executed = dispatch(rules, now, state, max_delay, dry_run=args.dry_run)
-    except subprocess.CalledProcessError as exc:
-        print(f"[dispatcher] command failed: {exc}", file=sys.stderr)
-        return exc.returncode or 1
-
-    if executed:
-        save_state(args.state_file, state)
-        print(f"[dispatcher] executed: {', '.join(executed)}")
-    else:
-        print("[dispatcher] no jobs due")
-    return 0
-
-
-if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(main())
