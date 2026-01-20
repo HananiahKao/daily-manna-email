@@ -302,7 +302,7 @@ class TestCronJobRunner:
     async def test_execute_job_single_attempt_nonzero_exit(self, cron_runner):
         """Test job execution with non-zero exit code."""
         command = ["failing", "command"]
-        job_name = "test_job"
+        job_name = "failing_job"
 
         # Mock subprocess with failure
         mock_process = AsyncMock()
@@ -319,6 +319,12 @@ class TestCronJobRunner:
 
             with pytest.raises(Exception, match="Command failed with exit code 1"):
                 await cron_runner._execute_job_single_attempt(command, job_name=job_name)
+
+            # Verify that update_job was called with status="failed"
+            mock_update_job.assert_called_once()
+            call_kwargs = mock_update_job.call_args[1]
+            assert call_kwargs['status'] == "failed"
+            assert call_kwargs['exit_code'] == 1
 
     def test_extract_json_output_success(self, cron_runner):
         """Test JSON output extraction from command output."""

@@ -254,26 +254,37 @@ class CronJobRunner:
                 if exit_code == 0:
                     status = "success"
                     logger.info(f"Job {job_name} completed successfully")
+                    self.job_tracker.update_job(
+                        job_result,
+                        status=status,
+                        exit_code=exit_code,
+                        json_output=json_output,
+                        metadata={
+                            "command": command,
+                            "timeout": timeout,
+                            "stdout_length": len(stdout_text),
+                            "stderr_length": len(stderr_text)
+                        }
+                    )
                 else:
                     status = "failed"
                     error_msg = f"Command failed with exit code {exit_code}"
                     job_result.error_message = error_msg
                     job_result.logs.append(error_msg)
                     logger.error(f"Job {job_name} failed: {error_msg}")
+                    self.job_tracker.update_job(
+                        job_result,
+                        status=status,
+                        exit_code=exit_code,
+                        json_output=json_output,
+                        metadata={
+                            "command": command,
+                            "timeout": timeout,
+                            "stdout_length": len(stdout_text),
+                            "stderr_length": len(stderr_text)
+                        }
+                    )
                     raise Exception(error_msg)  # Raise exception to trigger retry
-
-                self.job_tracker.update_job(
-                    job_result,
-                    status=status,
-                    exit_code=exit_code,
-                    json_output=json_output,
-                    metadata={
-                        "command": command,
-                        "timeout": timeout,
-                        "stdout_length": len(stdout_text),
-                        "stderr_length": len(stderr_text)
-                    }
-                )
 
             except asyncio.TimeoutError:
                 process.kill()

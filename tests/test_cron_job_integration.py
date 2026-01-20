@@ -119,15 +119,15 @@ class TestCronRunnerJobTrackerIntegration:
             with pytest.raises(Exception, match="Command failed with exit code 1"):
                 await runner._execute_job_with_retries("failing_job", ["failing", "command"], max_retries=0)  # No retries
 
-            # Check that job failure was tracked (remains in running status per current product behavior)
+            # Check that job failure was tracked with proper status update
             recent_executions = runner.job_tracker.get_recent_executions("failing_job")
             assert len(recent_executions) == 1
 
             job = recent_executions[0]
             assert job.job_name == "failing_job"
-            assert job.status == "running"  # Current product behavior: failed jobs don't get status updated
-            assert job.exit_code is None  # Not set since job tracker was never updated
-            assert "Command failed with exit code 1" in "\n".join(job.logs)  # Error logged but not in error_message
+            assert job.status == "failed"  # Fixed: failed jobs now get status updated
+            assert job.exit_code == 1      # Fixed: exit code is now properly set
+            assert "Command failed with exit code 1" in "\n".join(job.logs)  # Error logged in job logs
 
     @pytest.mark.asyncio
     async def test_job_retry_updates_tracker_correctly(self, cron_runner_with_tracker):
