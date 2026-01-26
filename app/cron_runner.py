@@ -181,6 +181,8 @@ class CronJobRunner:
                     await asyncio.sleep(60)  # Wait 1 minute before retry
                 else:
                     logger.error(f"Job {job_name} failed permanently after {max_retries + 1} attempts")
+                    # Set final status to failed when all retries are exhausted
+                    self.job_tracker.update_job(job_result, status="failed")
                     raise  # Re-raise the last exception
 
     async def _execute_job_single_attempt(
@@ -267,23 +269,24 @@ class CronJobRunner:
                         }
                     )
                 else:
-                    status = "failed"
                     error_msg = f"Command failed with exit code {exit_code}"
                     job_result.error_message = error_msg
                     job_result.logs.append(error_msg)
                     logger.error(f"Job {job_name} failed: {error_msg}")
-                    self.job_tracker.update_job(
-                        job_result,
-                        status=status,
-                        exit_code=exit_code,
-                        json_output=json_output,
-                        metadata={
+                    # Set status to failed only for single attempts (no retries)
+                    update_kwargs = {
+                        "exit_code": exit_code,
+                        "json_output": json_output,
+                        "metadata": {
                             "command": command,
                             "timeout": timeout,
                             "stdout_length": len(stdout_text),
                             "stderr_length": len(stderr_text)
                         }
-                    )
+                    }
+                    if job_result.max_retries == 0:
+                        update_kwargs["status"] = "failed"
+                    self.job_tracker.update_job(job_result, **update_kwargs)
                     raise Exception(error_msg)  # Raise exception to trigger retry
 
             except asyncio.TimeoutError:
@@ -293,12 +296,14 @@ class CronJobRunner:
                 logger.error(error_msg)
                 job_result.error_message = error_msg
                 job_result.logs.append(error_msg)
-                self.job_tracker.update_job(
-                    job_result,
-                    status="failed",
-                    error_message=error_msg,
-                    logs=[error_msg]
-                )
+                # Set status to failed only for single attempts (no retries)
+                update_kwargs = {
+                    "error_message": error_msg,
+                    "logs": [error_msg]
+                }
+                if job_result.max_retries == 0:
+                    update_kwargs["status"] = "failed"
+                self.job_tracker.update_job(job_result, **update_kwargs)
                 raise Exception(error_msg)  # Raise exception to trigger retry
 
         except Exception as e:
@@ -307,12 +312,14 @@ class CronJobRunner:
             if not job_result.error_message:  # Don't overwrite existing error
                 job_result.error_message = error_msg
                 job_result.logs.append(error_msg)
-                self.job_tracker.update_job(
-                    job_result,
-                    status="failed",
-                    error_message=error_msg,
-                    logs=[error_msg]
-                )
+                # Set status to failed only for single attempts (no retries)
+                update_kwargs = {
+                    "error_message": error_msg,
+                    "logs": [error_msg]
+                }
+                if job_result.max_retries == 0:
+                    update_kwargs["status"] = "failed"
+                self.job_tracker.update_job(job_result, **update_kwargs)
             raise  # Re-raise to trigger retry
 
 
