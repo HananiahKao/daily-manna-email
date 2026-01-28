@@ -1,5 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Calendar · Daily Manna Email{% endblock %}
+{% block header_right %}
+  <button type="button" id="notification-bell" class="bell-icon" aria-label="Notifications">
+    <svg viewBox="0 0 24 24" fill="currentColor" class="bell-svg">
+      <path d="M12 2C10.896 2 10 2.896 10 4v1.07C7.835 5.732 6 7.814 6 10v6H4v2h16v-2h-2v-6c0-2.186-1.835-4.268-4-4.93V4c0-1.104-.896-2-2-2zM12 22c1.104 0 2-.896 2-2H10c0 1.104.896 2 2 2z"/>
+    </svg>
+    <span id="notification-dot" class="notification-dot" style="display: none;"></span>
+  </button>
+{% endblock %}
 {% block content %}
 <section id="flash-messages" class="flash-messages">
   {% if message %}
@@ -25,14 +33,7 @@
     <p class="oauth-loading">Checking authorization status...</p>
   </div>
 </section>
-<section id="email-activity-section" class="email-activity">
-  <h3>Email Activity</h3>
-  <div id="email-activity-content">
-    <div class="activity-loading">
-      <p>Loading recent job activity...</p>
-    </div>
-  </div>
-</section>
+
 <section class="calendar-shell">
   <header class="calendar-toolbar">
     <div class="calendar-toolbar-info">
@@ -148,6 +149,21 @@
     </div>
   </form>
 </div>
+<div id="notification-overlay" class="notification-overlay" hidden>
+  <div class="notification-center">
+    <div class="notification-header">
+      <h3>Notifications</h3>
+      <button class="notification-close" aria-label="Close">×</button>
+    </div>
+    <div class="notification-filters">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="unresolved">Unresolved</button>
+    </div>
+    <div id="notification-list" class="notification-list">
+      <!-- notifications will be loaded here -->
+    </div>
+  </div>
+</div>
 <script>
   window.CalendarConfig = {
     schedulePath: "{{ schedule_path }}",
@@ -220,79 +236,177 @@
     }
   }
 
+  // Notification system state
+  let currentNotifications = [];
+  let acknowledgedNotifications = new Set(JSON.parse(localStorage.getItem('acknowledged_notifications') || '[]'));
+
   // Check OAuth status when page loads
   document.addEventListener('DOMContentLoaded', function() {
     checkOAuthStatus();
-    loadEmailActivity();
+    loadNotifications();
+
+    // Bell icon click
+    document.getElementById('notification-bell').addEventListener('click', toggleNotificationOverlay);
+
+    // Close overlay
+    document.querySelector('.notification-close').addEventListener('click', hideNotificationOverlay);
+
+    // Click outside to close
+    document.addEventListener('click', function(e) {
+      const overlay = document.getElementById('notification-overlay');
+      const bell = document.getElementById('notification-bell');
+
+      if (!overlay.hidden) {
+        const center = overlay.querySelector('.notification-center');
+        const isClickInsideOverlay = center.contains(e.target) || bell.contains(e.target);
+        const isClickInsideModal = document.querySelector('.job-details-modal-overlay')?.contains(e.target);
+
+        if (!isClickInsideOverlay && !isClickInsideModal) {
+          hideNotificationOverlay();
+        }
+      }
+    });
+
+    // Filters
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        renderNotifications();
+      });
+    });
   });
 
-  // Email Activity management
-  async function loadEmailActivity() {
-    const activityDiv = document.getElementById('email-activity-content');
-    try {
-      const response = await fetch('/api/jobs/recent?limit=10');
-      if (!response.ok) {
-        throw new Error('Failed to load job activity');
-      }
-      const data = await response.json();
+  function showNotificationOverlay() {
+    const overlay = document.getElementById('notification-overlay');
+    const bell = document.getElementById('notification-bell');
+    const rect = bell.getBoundingClientRect();
 
-      if (data.executions && data.executions.length > 0) {
-        activityDiv.innerHTML = generateActivityHTML(data.executions);
-      } else {
-        activityDiv.innerHTML = `
-          <div class="activity-empty">
-            <p>No recent job activity found.</p>
-            <p>Jobs will appear here once they run automatically or are triggered manually.</p>
-          </div>
-        `;
-      }
-    } catch (error) {
-      console.error('Email activity load failed:', error);
-      activityDiv.innerHTML = `
-        <div class="activity-error">
-          <p>Unable to load email activity.</p>
-        </div>
-      `;
+    // Show off-screen to measure width
+    overlay.style.top = '-1000px';
+    overlay.hidden = false;
+
+    const center = overlay.querySelector('.notification-center');
+    const panelWidth = center.offsetWidth;
+
+    // Now position correctly under bell's bottom-right
+    overlay.style.top = (rect.bottom + 8) + 'px';
+    overlay.style.left = (rect.right - panelWidth) + 'px';
+  }
+
+  function toggleNotificationOverlay() {
+    const overlay = document.getElementById('notification-overlay');
+    if (overlay.hidden) {
+      showNotificationOverlay();
+    } else {
+      hideNotificationOverlay();
     }
   }
 
-  function generateActivityHTML(executions) {
-    let html = '<div class="activity-list">';
+  function hideNotificationOverlay() {
+    document.getElementById('notification-overlay').hidden = true;
+  }
 
-    executions.forEach(execution => {
-      const statusClass = getStatusClass(execution.status);
-      const statusIcon = getStatusIcon(execution.status);
-      const duration = execution.duration_formatted || 'Running...';
-      const hasJsonOutput = execution.json_output && Object.keys(execution.json_output).length > 0;
+  // Notification management
+  async function loadNotifications() {
+    try {
+      const response = await fetch('/api/jobs/recent?limit=20');
+      if (!response.ok) {
+        throw new Error('Failed to load notifications');
+      }
+      const data = await response.json();
+      currentNotifications = data.executions || [];
+      renderNotifications();
+      updateBellDot();
+    } catch (error) {
+      console.error('Notification load failed:', error);
+    }
+  }
+
+  function renderNotifications() {
+    const listDiv = document.getElementById('notification-list');
+    const activeFilter = document.querySelector('.filter-btn.active').dataset.filter;
+
+    let filtered = currentNotifications;
+    if (activeFilter === 'unresolved') {
+      filtered = currentNotifications.filter(n => n.status === 'failed' && !acknowledgedNotifications.has(`${n.job_name}_${n.start_time}`));
+    }
+
+    // Sort by most recent first
+    filtered.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+
+    let html = '';
+    filtered.forEach(notification => {
+      const id = `${notification.job_name}_${notification.start_time}`;
+      const isAcknowledged = acknowledgedNotifications.has(id);
+      const status = getNotificationStatus(notification.status, isAcknowledged);
+      const outcome = getNotificationOutcome(notification.status);
+      const timeStr = formatNotificationTime(notification.start_time);
 
       html += `
-        <div class="activity-item ${statusClass}">
-          <div class="activity-header">
-            <div class="activity-title">
-              <span class="activity-status-icon">${statusIcon}</span>
-              <span class="activity-name">${formatJobName(execution.job_name)}</span>
-              <span class="activity-time">${formatTime(execution.start_time)}</span>
+        <div class="notification-item ${status.className}" onclick="showJobDetails('${id}')">
+          <div class="notification-content">
+            <div class="notification-status-icon" style="${status.iconStyle}"></div>
+            <div class="notification-details">
+              <div class="notification-title">${formatJobName(notification.job_name)}</div>
+              <div class="notification-outcome">${outcome}</div>
+              <div class="notification-time">${timeStr}</div>
             </div>
-            <div class="activity-meta">
-              <span class="activity-duration">${duration}</span>
-              ${execution.retry_count > 0 ? `<span class="activity-retries">Retry ${execution.retry_count}</span>` : ''}
-            </div>
-          </div>
-          <div class="activity-details">
-            ${hasJsonOutput ? generateJsonOutput(execution.json_output) : ''}
-            ${execution.error_message ? `<div class="activity-error-msg">${execution.error_message}</div>` : ''}
-          </div>
-          <div class="activity-actions">
-            <button class="activity-logs-btn" onclick="showRawLogs('${execution.job_name}_${execution.start_time}')">
-              View Raw Logs
-            </button>
           </div>
         </div>
       `;
     });
 
-    html += '</div>';
-    return html;
+    if (filtered.length === 0) {
+      html = '<div style="text-align: center; padding: 2rem; color: #6b7280;">No notifications found.</div>';
+    }
+
+    listDiv.innerHTML = html;
+  }
+
+  function getNotificationStatus(status, isAcknowledged) {
+    if (status === 'failed') {
+      if (isAcknowledged) {
+        return {
+          className: 'acknowledged-error',
+          iconStyle: 'display: none;'
+        };
+      } else {
+        return {
+          className: 'unresolved-error',
+          iconStyle: 'background: #ef4444; border-radius: 50%;'
+        };
+      }
+    } else {
+      return {
+        className: 'success',
+        iconStyle: ''
+      };
+    }
+  }
+
+  function getNotificationOutcome(status) {
+    switch (status) {
+      case 'success': return 'Success';
+      case 'failed': return 'Failed';
+      case 'running': return 'Running';
+      case 'skipped': return 'Skipped';
+      default: return 'Unknown';
+    }
+  }
+
+  function acknowledgeNotification(id) {
+    acknowledgedNotifications.add(id);
+    localStorage.setItem('acknowledged_notifications', JSON.stringify([...acknowledgedNotifications]));
+    renderNotifications();
+    updateBellDot();
+  }
+
+  function updateBellDot() {
+    const hasUnresolved = currentNotifications.some(n =>
+      n.status === 'failed' && !acknowledgedNotifications.has(`${n.job_name}_${n.start_time}`)
+    );
+    document.getElementById('notification-dot').style.display = hasUnresolved ? 'block' : 'none';
   }
 
   function generateJsonOutput(jsonOutput) {
@@ -324,61 +438,126 @@
     return nameMap[jobName] || jobName;
   }
 
-  function formatTime(isoString) {
+  function formatNotificationTime(isoString) {
     const date = new Date(isoString);
     const now = new Date();
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
 
     if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 60) return `${diffMins} min ago`;
 
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays}d ago`;
-  }
-
-  function getStatusClass(status) {
-    switch (status) {
-      case 'success': return 'status-success';
-      case 'failed': return 'status-failed';
-      case 'running': return 'status-running';
-      case 'skipped': return 'status-skipped';
-      default: return 'status-unknown';
+    if (diffHours < 24) {
+      // Check if today
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      if (dateDay.getTime() === today.getTime()) {
+        return `Today at ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+      }
     }
-  }
 
-  function getStatusIcon(status) {
-    switch (status) {
-      case 'success': return '✓';
-      case 'failed': return '✗';
-      case 'running': return '⟳';
-      case 'skipped': return '⊘';
-      default: return '?';
+    if (diffHours >= 24 && diffHours < 48) {
+      // Yesterday
+      return `Yesterday at ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
     }
+
+    if (diffDays >= 2) {
+      // Older than yesterday
+      return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+    }
+
+    return `${diffHours}h ago`; // fallback
   }
 
-  async function showRawLogs(executionId) {
+  async function showJobDetails(executionId) {
     try {
       const response = await fetch(`/api/jobs/logs/${executionId}`);
       if (!response.ok) {
-        throw new Error('Failed to load logs');
+        throw new Error('Failed to load job details');
       }
       const data = await response.json();
+      const execution = data.execution;
 
-      // Create modal overlay
+      // Format the start time nicely
+      const startDate = new Date(execution.start_time);
+      const formattedStartTime = startDate.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+
+      // Format the end time nicely if available
+      const formattedEndTime = execution.end_time ? new Date(execution.end_time).toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      }) : null;
+
+      // Get status and outcome
+      const outcome = getNotificationOutcome(execution.status);
+      const statusClass = execution.status === 'failed' ? 'status-error' :
+                         execution.status === 'success' ? 'status-success' : 'status-info';
+
+      // Create job details modal
       const modal = document.createElement('div');
-      modal.className = 'logs-modal-overlay';
+      modal.className = 'job-details-modal-overlay';
       modal.innerHTML = `
-        <div class="logs-modal">
-          <div class="logs-modal-header">
-            <h3>Raw Logs: ${formatJobName(data.execution.job_name)}</h3>
-            <button class="logs-modal-close" onclick="this.closest('.logs-modal-overlay').remove()">×</button>
+        <div class="job-details-modal">
+          <div class="job-details-header">
+            <h3>Job Details</h3>
+            <button class="job-details-close" onclick="event.stopPropagation(); this.closest('.job-details-modal-overlay').remove()">×</button>
           </div>
-          <div class="logs-modal-content">
-            <pre class="logs-content">${data.logs.map(line => escapeHtml(line)).join('\n')}</pre>
+          <div class="job-details-content">
+            <div class="job-info-section">
+              <div class="job-info-row">
+                <span class="job-info-label">Job:</span>
+                <span class="job-info-value">${formatJobName(execution.job_name)}</span>
+              </div>
+              <div class="job-info-row">
+                <span class="job-info-label">Started:</span>
+                <span class="job-info-value">${formattedStartTime}</span>
+              </div>
+              ${execution.end_time ? `
+              <div class="job-info-row">
+                <span class="job-info-label">Ended:</span>
+                <span class="job-info-value">${formattedEndTime}</span>
+              </div>
+              ` : ''}
+              <div class="job-info-row">
+                <span class="job-info-label">Status:</span>
+                <span class="job-info-value status-indicator ${statusClass}">${outcome}</span>
+              </div>
+              ${execution.end_time ? `
+              <div class="job-info-row">
+                <span class="job-info-label">Duration:</span>
+                <span class="job-info-value">${formatDuration(execution.start_time, execution.end_time)}</span>
+              </div>
+              ` : ''}
+            </div>
+            <div class="job-actions-section">
+              <button class="show-log-btn" onclick="toggleLogSection(this)">
+                Show Run Log
+              </button>
+            </div>
+            <div class="log-section" style="display: none;">
+              <div class="log-header">
+                <h4>Technical Details</h4>
+                <button class="hide-log-btn" onclick="toggleLogSection(this)">
+                  Hide Run Log
+                </button>
+              </div>
+              <div class="log-content">
+                <pre class="log-text">${data.logs.map(line => escapeHtml(line)).join('\n')}</pre>
+              </div>
+            </div>
           </div>
         </div>
       `;
@@ -392,10 +571,43 @@
         }
       });
 
+      // Acknowledge the notification when viewing details
+      acknowledgeNotification(executionId);
+
     } catch (error) {
-      console.error('Failed to load logs:', error);
-      alert('Failed to load logs. Check console for details.');
+      console.error('Failed to load job details:', error);
+      alert('Failed to load job details. Check console for details.');
     }
+  }
+
+  function toggleLogSection(button) {
+    const modal = button.closest('.job-details-modal');
+    const logSection = modal.querySelector('.log-section');
+    const showBtn = modal.querySelector('.show-log-btn');
+    const hideBtn = modal.querySelector('.hide-log-btn');
+
+    if (logSection.style.display === 'none') {
+      logSection.style.display = 'block';
+      showBtn.style.display = 'none';
+      hideBtn.style.display = 'inline-block';
+    } else {
+      logSection.style.display = 'none';
+      showBtn.style.display = 'inline-block';
+      hideBtn.style.display = 'none';
+    }
+  }
+
+  function formatDuration(startTime, endTime) {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const diffMs = end - start;
+    const diffSeconds = Math.floor(diffMs / 1000);
+
+    if (diffSeconds < 60) return `${diffSeconds} seconds`;
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) return `${diffMinutes} minutes`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    return `${diffHours} hours`;
   }
 
   function escapeHtml(text) {
