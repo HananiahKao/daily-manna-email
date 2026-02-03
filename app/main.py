@@ -870,12 +870,20 @@ def create_app() -> FastAPI:
     def api_jobs_recent(
         job_name: Optional[str] = None,
         limit: int = 20,
+        offset: int = 0,
         _: str = Depends(require_user),
     ) -> JSONResponse:
-        """Get recent job executions."""
+        """Get recent job executions with pagination support."""
         from app.job_tracker import get_job_tracker
         tracker = get_job_tracker()
-        executions = tracker.get_recent_executions(job_name, limit)
+        
+        # Validate parameters
+        if limit < 1 or limit > 100:
+            limit = 20
+        if offset < 0:
+            offset = 0
+
+        executions = tracker.get_recent_executions(job_name, limit, offset)
 
         # Convert to dict format for JSON response
         result = []
@@ -888,7 +896,19 @@ def create_app() -> FastAPI:
                 exec_dict["duration_formatted"] = None
             result.append(exec_dict)
 
-        return JSONResponse({"executions": result})
+        # Calculate pagination metadata
+        total_count = len(tracker.get_recent_executions(job_name, limit=10000))  # Get total count
+        has_more = (offset + limit) < total_count
+
+        return JSONResponse({
+            "executions": result,
+            "pagination": {
+                "offset": offset,
+                "limit": limit,
+                "total": total_count,
+                "has_more": has_more
+            }
+        })
 
     @app.get("/api/jobs/stats", response_class=JSONResponse)
     def api_jobs_stats(

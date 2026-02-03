@@ -226,12 +226,13 @@ class JobTracker:
         self._save_history()
         return True
 
-    def get_recent_executions(self, job_name: Optional[str] = None, limit: int = 50) -> List[JobExecutionResult]:
-        """Get recent job executions.
+    def get_recent_executions(self, job_name: Optional[str] = None, limit: int = 50, offset: int = 0) -> List[JobExecutionResult]:
+        """Get recent job executions with pagination support.
 
         Args:
             job_name: Filter by job name (optional)
             limit: Maximum number of executions to return
+            offset: Number of executions to skip (for pagination)
 
         Returns:
             List of recent job executions, most recent first
@@ -244,7 +245,8 @@ class JobTracker:
         # Sort by start time, most recent first
         jobs.sort(key=lambda j: j.start_time, reverse=True)
 
-        return jobs[:limit]
+        # Apply pagination
+        return jobs[offset:offset + limit]
 
     def get_job_stats(self, job_name: Optional[str] = None) -> Dict[str, Any]:
         """Get statistics for job executions.

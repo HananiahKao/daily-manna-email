@@ -161,6 +161,18 @@
     </div>
     <div id="notification-list" class="notification-list">
       <!-- notifications will be loaded here -->
+      <div id="notification-pagination-footer" class="notification-pagination-footer">
+        <div id="notification-load-more-item" class="notification-load-more-item" hidden>
+          <button id="load-more-btn" class="load-more-btn" type="button">Load More</button>
+        </div>
+        <div id="notification-loading-item" class="notification-loading-item" hidden>
+          <div class="loading-spinner"></div>
+          <span>Loading more notifications...</span>
+        </div>
+        <div id="notification-no-more-item" class="notification-no-more-item" hidden>
+          <span>No more notifications</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -239,6 +251,12 @@
   // Notification system state
   let currentNotifications = [];
   let acknowledgedNotifications = new Set(JSON.parse(localStorage.getItem('acknowledged_notifications') || '[]'));
+  let notificationPagination = {
+    offset: 0,
+    limit: 20,
+    hasMore: true,
+    isLoading: false
+  };
 
   // Check OAuth status when page loads
   document.addEventListener('DOMContentLoaded', function() {
@@ -272,9 +290,13 @@
       btn.addEventListener('click', function() {
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
-        renderNotifications();
+        resetPagination();
+        loadNotifications(); // Reload notifications instead of just re-rendering to ensure offset is correct
       });
     });
+
+    // Load More button
+    document.getElementById('load-more-btn').addEventListener('click', loadMoreNotifications);
   });
 
   function showNotificationOverlay() {
@@ -316,15 +338,173 @@
       }
       const data = await response.json();
       currentNotifications = data.executions || [];
+      // Reset pagination state for initial load
+      notificationPagination.offset = currentNotifications.length;
+      notificationPagination.hasMore = data.pagination?.has_more || false;
       renderNotifications();
       updateBellDot();
+      // Ensure loading state is properly hidden after initial load
+      hideLoadingState();
     } catch (error) {
       console.error('Notification load failed:', error);
     }
   }
 
+  async function loadMoreNotifications() {
+    // Prevent multiple concurrent calls
+    if (notificationPagination.isLoading || !notificationPagination.hasMore) {
+      return;
+    }
+
+    // Disable button immediately and show loading state
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    loadMoreBtn.disabled = true;
+    notificationPagination.isLoading = true;
+    showLoadingState();
+
+    const MAX_FETCH_PAGES = 5;
+    let pagesFetched = 0;
+    let notificationsFound = false;
+
+    try {
+      while (!notificationsFound && notificationPagination.hasMore && pagesFetched < MAX_FETCH_PAGES) {
+        const response = await fetch(`/api/jobs/recent?limit=${notificationPagination.limit}&offset=${notificationPagination.offset}`);
+        if (!response.ok) {
+          throw new Error('Failed to load more notifications');
+        }
+        const data = await response.json();
+        
+        const newNotifications = data.executions || [];
+        if (newNotifications.length > 0) {
+          notificationPagination.offset += newNotifications.length;
+          notificationPagination.hasMore = data.pagination?.has_more || false;
+          
+          // Filter for unseen notifications if in unresolved tab
+          const activeFilter = document.querySelector('.filter-btn.active').dataset.filter;
+          if (activeFilter === 'unresolved') {
+            const unseenNotifications = newNotifications.filter(n => 
+              n.status === 'failed' && !acknowledgedNotifications.has(`${n.job_name}_${n.start_time}`)
+            );
+            
+            if (unseenNotifications.length > 0) {
+              currentNotifications = [...currentNotifications, ...newNotifications];
+              notificationsFound = true;
+            }
+          } else {
+            // For all tab, add all notifications
+            currentNotifications = [...currentNotifications, ...newNotifications];
+            notificationsFound = true;
+          }
+        } else {
+          notificationPagination.hasMore = false;
+        }
+        
+        pagesFetched++;
+      }
+      
+      renderNotifications();
+      updateLoadMoreState();
+    } catch (error) {
+      console.error('Load more notifications failed:', error);
+      alert('Failed to load more notifications. Please try again.');
+    } finally {
+      notificationPagination.isLoading = false;
+      hideLoadingState();
+      // Re-enable button after loading completes (updateLoadMoreState will handle correct state)
+      updateLoadMoreState();
+    }
+  }
+
+  function showLoadingState() {
+    const loadMoreItem = document.getElementById('notification-load-more-item');
+    const loadingItem = document.getElementById('notification-loading-item');
+    const noMoreItem = document.getElementById('notification-no-more-item');
+
+    // Immediately hide all items
+    loadMoreItem.hidden = true;
+    noMoreItem.hidden = true;
+    
+    // Show loading item
+    loadingItem.hidden = false;
+  }
+
+  function hideLoadingState() {
+    const loadingItem = document.getElementById('notification-loading-item');
+
+    // Smooth transition: fade out Loading
+    loadingItem.style.opacity = '0';
+    loadingItem.style.transform = 'translateY(-8px)';
+    loadingItem.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+
+    setTimeout(() => {
+      loadingItem.hidden = true;
+      loadingItem.style.opacity = '1';
+      loadingItem.style.transform = 'translateY(0)';
+      loadingItem.style.transition = 'none';
+    }, 300);
+  }
+
+  function updateLoadMoreState() {
+    const loadMoreItem = document.getElementById('notification-load-more-item');
+    const noMoreItem = document.getElementById('notification-no-more-item');
+    const loadMoreBtn = document.getElementById('load-more-btn');
+
+    // Immediately hide all items first
+    loadMoreItem.hidden = true;
+    loadMoreItem.style.opacity = '0';
+    loadMoreItem.style.transform = 'translateY(8px)';
+    loadMoreItem.style.transition = 'none';
+
+    noMoreItem.hidden = true;
+    noMoreItem.style.opacity = '0';
+    noMoreItem.style.transform = 'translateY(8px)';
+    noMoreItem.style.transition = 'none';
+
+    const activeFilter = document.querySelector('.filter-btn.active').dataset.filter;
+    let filtered = currentNotifications;
+    if (activeFilter === 'unresolved') {
+      filtered = currentNotifications.filter(n => n.status === 'failed' && !acknowledgedNotifications.has(`${n.job_name}_${n.start_time}`));
+    }
+
+    if (notificationPagination.hasMore) {
+      // Show Load More button
+      loadMoreItem.hidden = false;
+      loadMoreItem.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+      loadMoreItem.style.opacity = '0';
+      loadMoreItem.style.transform = 'translateY(8px)';
+
+      // Trigger reflow and start transition
+      void loadMoreItem.offsetWidth;
+      loadMoreItem.style.opacity = '1';
+      loadMoreItem.style.transform = 'translateY(0)';
+
+      // Disable button if there are no notifications to load
+      const isLoading = notificationPagination.isLoading;
+      const hasNoNotifications = filtered.length === 0;
+      loadMoreBtn.disabled = isLoading || hasNoNotifications;
+    } else {
+      // Show "No more notifications"
+      noMoreItem.hidden = false;
+      noMoreItem.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+      noMoreItem.style.opacity = '0';
+      noMoreItem.style.transform = 'translateY(8px)';
+
+      // Trigger reflow and start transition
+      void noMoreItem.offsetWidth;
+      noMoreItem.style.opacity = '1';
+      noMoreItem.style.transform = 'translateY(0)';
+    }
+  }
+
+  function resetPagination() {
+    notificationPagination.offset = 0;
+    notificationPagination.hasMore = true;
+    notificationPagination.isLoading = false;
+  }
+
   function renderNotifications() {
     const listDiv = document.getElementById('notification-list');
+    const paginationFooter = document.getElementById('notification-pagination-footer');
     const activeFilter = document.querySelector('.filter-btn.active').dataset.filter;
 
     let filtered = currentNotifications;
@@ -335,6 +515,11 @@
     // Sort by most recent first
     filtered.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
 
+    // Clear all content except the pagination footer
+    const existingItems = listDiv.querySelectorAll('.notification-item, .no-notifications-message');
+    existingItems.forEach(item => item.remove());
+
+    // Create notification items
     let html = '';
     filtered.forEach(notification => {
       const id = `${notification.job_name}_${notification.start_time}`;
@@ -358,10 +543,16 @@
     });
 
     if (filtered.length === 0) {
-      html = '<div style="text-align: center; padding: 2rem; color: #6b7280;">No notifications found.</div>';
+      html = '<div class="no-notifications-message" style="text-align: center; padding: 2rem; color: #6b7280;">No notifications found.</div>';
     }
 
-    listDiv.innerHTML = html;
+    // Insert notifications before the pagination footer
+    if (html) {
+      paginationFooter.insertAdjacentHTML('beforebegin', html);
+    }
+
+    // Update Load More state
+    updateLoadMoreState();
   }
 
   function getNotificationStatus(status, isAcknowledged) {
