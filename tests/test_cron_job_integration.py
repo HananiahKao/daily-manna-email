@@ -15,21 +15,25 @@ from app.job_tracker import JobTracker
 
 
 @pytest.fixture
-def temp_project_root(tmp_path):
-    """Create a temporary project root with necessary directories."""
+def temp_project_root(fs):
+    """Create a temporary project root with necessary directories in fake file system."""
+    temp_path = "/test/project_root"
+    fs.create_dir(temp_path)
+    
     # Create logs directory
-    logs_dir = tmp_path / "logs"
-    logs_dir.mkdir()
+    logs_dir = f"{temp_path}/logs"
+    fs.create_dir(logs_dir)
 
     # Create state directory
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
+    state_dir = f"{temp_path}/state"
+    fs.create_dir(state_dir)
 
     # Create a minimal .env file
-    env_file = tmp_path / ".env"
-    env_file.write_text("TEST_VAR=test_value\n")
+    env_file = f"{temp_path}/.env"
+    fs.create_file(env_file, contents="TEST_VAR=test_value\n")
 
-    return tmp_path
+    from pathlib import Path
+    return Path(temp_path)
 
 
 @pytest.fixture
@@ -42,11 +46,10 @@ def mock_scheduler():
 
 
 @pytest.fixture
-async def cron_runner_with_tracker(temp_project_root, mock_scheduler):
+async def cron_runner_with_tracker(temp_project_root, mock_scheduler, fs):
     """Create a cron runner with a real job tracker for integration testing."""
     with patch('app.cron_runner.AsyncIOScheduler', return_value=mock_scheduler), \
-         patch('app.cron_runner.Path') as mock_path_class, \
-         patch('app.job_tracker.JobTracker') as mock_job_tracker_class:
+         patch('app.cron_runner.Path') as mock_path_class:
 
         # Mock Path to simulate app/cron_runner.py being in temp_project_root/app/cron_runner.py
         mock_app_dir = temp_project_root / "app"
@@ -58,16 +61,14 @@ async def cron_runner_with_tracker(temp_project_root, mock_scheduler):
         mock_path_instance.__truediv__ = lambda self, x: temp_project_root / x
         mock_path_class.return_value = mock_path_instance
 
-        # Create a real job tracker with isolated storage in temp directory
+        # Create a real job tracker with isolated storage in temp directory (fake file system)
         isolated_history_path = temp_project_root / "state" / "job_history.json"
         real_job_tracker = JobTracker(storage_path=isolated_history_path)
 
-        # Mock the JobTracker constructor to return our isolated instance
-        mock_job_tracker_class.return_value = real_job_tracker
-
         runner = CronJobRunner()
-        # Override the scheduler with our mock
+        # Override the scheduler with our mock and replace job tracker
         runner.scheduler = mock_scheduler
+        runner.job_tracker = real_job_tracker
 
         yield runner
 

@@ -18,21 +18,25 @@ from app.job_tracker import JobExecutionResult
 
 
 @pytest.fixture
-def temp_project_root(tmp_path):
-    """Create a temporary project root with necessary directories."""
+def temp_project_root(fs):
+    """Create a temporary project root with necessary directories in fake file system."""
+    temp_path = "/test/project_root"
+    fs.create_dir(temp_path)
+    
     # Create logs directory
-    logs_dir = tmp_path / "logs"
-    logs_dir.mkdir()
+    logs_dir = f"{temp_path}/logs"
+    fs.create_dir(logs_dir)
 
     # Create state directory
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
+    state_dir = f"{temp_path}/state"
+    fs.create_dir(state_dir)
 
     # Create a minimal .env file
-    env_file = tmp_path / ".env"
-    env_file.write_text("TEST_VAR=test_value\n")
+    env_file = f"{temp_path}/.env"
+    fs.create_file(env_file, contents="TEST_VAR=test_value\n")
 
-    return tmp_path
+    from pathlib import Path
+    return Path(temp_path)
 
 
 @pytest.fixture
@@ -45,10 +49,16 @@ def mock_scheduler():
 
 
 @pytest.fixture
-async def cron_runner(temp_project_root, mock_scheduler):
-    """Create a cron runner instance with mocked scheduler."""
+async def cron_runner(temp_project_root, mock_scheduler, fs):
+    """Create a cron runner instance with mocked scheduler and job tracker."""
+    # Create the state directory in fake file system where job tracker expects to save
+    state_dir = temp_project_root / "state"
+    if not fs.exists(str(state_dir)):
+        fs.create_dir(str(state_dir))
+    
     with patch('app.cron_runner.AsyncIOScheduler', return_value=mock_scheduler), \
-         patch('app.cron_runner.Path') as mock_path_class:
+         patch('app.cron_runner.Path') as mock_path_class, \
+         patch('app.cron_runner.get_job_tracker') as mock_get_job_tracker:
 
         # Mock Path to simulate app/cron_runner.py being in temp_project_root/app/cron_runner.py
         mock_app_dir = temp_project_root / "app"
@@ -59,6 +69,13 @@ async def cron_runner(temp_project_root, mock_scheduler):
         mock_path_instance.parents = [mock_app_dir, temp_project_root]  # parents[1] is project root
         mock_path_instance.__truediv__ = lambda self, x: temp_project_root / x
         mock_path_class.return_value = mock_path_instance
+
+        # Create a mock job tracker to avoid actual file I/O
+        mock_job_tracker = Mock()
+        mock_job_tracker.start_job.return_value = Mock()
+        mock_job_tracker.update_job.return_value = None
+        mock_job_tracker.get_recent_executions.return_value = []
+        mock_get_job_tracker.return_value = mock_job_tracker
 
         runner = CronJobRunner()
 

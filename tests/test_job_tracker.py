@@ -1,6 +1,5 @@
 import datetime as dt
 import json
-import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -12,16 +11,16 @@ from app.job_tracker import JobTracker, JobExecutionResult, get_job_tracker
 
 
 @pytest.fixture
-def temp_state_dir(tmp_path):
-    """Create a temporary state directory."""
-    state_dir = tmp_path / "state"
-    state_dir.mkdir()
-    return state_dir
+def temp_state_dir(fs):
+    """Create a temporary state directory in fake file system."""
+    state_dir = "/test/state"
+    fs.create_dir(state_dir)
+    return Path(state_dir)
 
 
 @pytest.fixture
 def job_tracker(temp_state_dir):
-    """Create a job tracker with temporary storage."""
+    """Create a job tracker with temporary storage in fake file system."""
     return JobTracker(storage_path=temp_state_dir / "job_history.json")
 
 

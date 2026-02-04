@@ -66,8 +66,7 @@ def test_email_pipeline_e2e_sjzl_mode(mock_get_gmail_service, monkeypatch):
     assert "<h1>" in html_text
 
 
-@patch("sjzl_daily_email.get_gmail_service")
-def test_email_pipeline_e2e_ezoe_mode(mock_get_gmail_service, monkeypatch):
+def test_email_pipeline_e2e_ezoe_mode(monkeypatch, fs):
     """End-to-end test of the email sending pipeline for EZOe mode.
 
     Tests the full flow using content sources (e.g., ezoe.work or Wix),
@@ -77,30 +76,68 @@ def test_email_pipeline_e2e_ezoe_mode(mock_get_gmail_service, monkeypatch):
     monkeypatch.setenv("SMTP_USER", "test@example.com")
     monkeypatch.setenv("EMAIL_FROM", "sender@example.com")
     monkeypatch.setenv("EMAIL_TO", "recipient@example.com")
-    monkeypatch.setenv("EZOE_SELECTOR", "2-1-3")  # volume 2, lesson 1, day 3
+    monkeypatch.setenv("EZOE_SELECTOR", "2-1-3")
     monkeypatch.setenv("DEBUG_MODE", "1")
     monkeypatch.setenv("CONTENT_SOURCE", "ezoe")
 
+    # Allow access to real opencc configuration files
+    import opencc
+    import os
+    opencc_path = os.path.dirname(os.path.abspath(opencc.__file__))
+    fs.add_real_directory(opencc_path)
+
+    # Create state directory in fake file system
+    fs.create_dir("state")
+
+    # Create a mock content block
+    class MockContentBlock:
+        def __init__(self):
+            self.html_content = """
+            <div class="email-body">
+                <p>Test content</p>
+                <a href="https://ezoe.work/test">原文連結</a>
+            </div>
+            """
+            self.title = "Test Lesson"
+            self.plain_text_content = "Test content\n原文連結"
+
+    # Create a mock active source
+    mock_source = MagicMock()
+    mock_source.get_daily_content.return_value = MockContentBlock()
+    mock_source.get_email_subject.return_value = "聖經之旅"
+    mock_source.get_content_url.return_value = "https://ezoe.work/test"
+    mock_source.get_source_name.return_value = "ezoe"
+
     # Mock the Gmail service
     mock_service = MagicMock()
-    mock_get_gmail_service.return_value = mock_service
+    mock_get_gmail = MagicMock(return_value=mock_service)
 
-    # Execute the full pipeline
-    result = sjzl.run_once()
+    # Import and reload the module with the patches
+    import importlib
+    import sjzl_daily_email as sjzl
+    
+    # Patch the module-level variable directly
+    with patch.object(sjzl, "get_gmail_service", mock_get_gmail), \
+         patch.object(sjzl, "find_latest_lesson"), \
+         patch("content_source_factory.get_active_source", return_value=mock_source), \
+         patch.object(sjzl, "EZOe_SELECTOR", "2-1-3"):
+        
+        # Execute the full pipeline
+        result = sjzl.run_once()
 
-    # Assert successful execution
-    assert result == 0
+        # Assert successful execution
+        assert result == 0
 
-    # Assert that Gmail API was called to send email
-    mock_get_gmail_service.assert_called_once()
-    mock_service.users.return_value.messages.return_value.send.assert_called_once()
+        # Assert that Gmail API was called to send email
+        mock_get_gmail.assert_called_once()
+        mock_service.users.return_value.messages.return_value.send.assert_called_once()
 
-    # Verify the debug output file
-    import pathlib
-    wrapped_file = pathlib.Path("state/last_ezoe_email_wrapped.html")
-    assert wrapped_file.exists()
-    content = wrapped_file.read_text()
-    assert "<!doctype html>" in content
-    assert "email-body" in content
-    assert "原文連結" in content
-    assert "ezoe.work" in content
+        # Verify the debug output file in fake file system
+        import pathlib
+        wrapped_file = pathlib.Path("state/last_ezoe_email_wrapped.html")
+        assert wrapped_file.exists()
+        content = wrapped_file.read_text()
+        assert "<!doctype html>" in content
+        assert "email-body" in content
+        assert "原文連結" in content
+        assert "ezoe.work" in content
