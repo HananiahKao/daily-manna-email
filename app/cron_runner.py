@@ -97,9 +97,12 @@ class CronJobRunner:
             # Ask dispatcher what jobs should run (decision only)
             jobs_to_run = job_dispatcher.get_jobs_to_run(rules, now, state, max_delay)
 
-            # Execute each job using cron_runner's robust execution system
+            # Execute each job using cron_runner's robust execution system (in parallel)
             executed_jobs = []
-            for rule in jobs_to_run:
+            job_tasks = []
+
+            async def job_task_wrapper(rule):
+                """Wrap job execution with state tracking."""
                 try:
                     # Execute job with full retry logic and tracking
                     await self._execute_job_from_rule(rule.name, rule)
@@ -109,6 +112,14 @@ class CronJobRunner:
                 except Exception as e:
                     logger.error(f"Failed to execute job {rule.name}: {e}")
                     # Don't update state for failed jobs - they can retry later
+
+            # Create tasks for each job
+            for rule in jobs_to_run:
+                task = asyncio.create_task(job_task_wrapper(rule))
+                job_tasks.append(task)
+
+            # Wait for all jobs to complete
+            await asyncio.gather(*job_tasks, return_exceptions=True)
 
             # Save updated state after all executions
             if executed_jobs:
