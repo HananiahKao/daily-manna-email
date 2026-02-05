@@ -202,7 +202,8 @@ class CronJobRunner:
         timeout: int = 600,
         attempt_info: Optional[str] = None,
         job_result: Optional[JobExecutionResult] = None,
-        job_name: Optional[str] = None
+        job_name: Optional[str] = None,
+        rule: Optional[job_dispatcher.DispatchRule] = None
     ) -> None:
         """Execute a single job attempt without retries.
 
@@ -234,13 +235,20 @@ class CronJobRunner:
             job_result.logs.append(f"Starting job: {job_name}")
             job_result.logs.append(f"Command: {' '.join(command)}")
 
-            # Execute the command
+            # Execute the command with job-specific environment variables
+            job_env = self._get_job_env_vars(rule) if rule and hasattr(rule, 'env') else self._get_env_vars()
+            
+            # Log environment variables for debugging
+            if job_env:
+                logger.info(f"Job {job_name} using environment variables: {list(job_env.keys())}")
+                job_result.logs.append(f"Environment variables: {list(job_env.keys())}")
+            
             process = await asyncio.create_subprocess_exec(
                 *command,
                 cwd=str(self.project_root),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env={**os.environ, **self._get_env_vars()},
+                env={**os.environ, **job_env},
                 preexec_fn=os.setsid if hasattr(os, 'setsid') else None
             )
 
@@ -375,6 +383,27 @@ class CronJobRunner:
                 pass  # Ignore env file errors
 
         return env
+
+    def _get_job_env_vars(self, job_rule: job_dispatcher.DispatchRule) -> Dict[str, str]:
+        """Get combined environment variables for a specific job.
+        
+        Combines global environment variables from .env file with job-specific
+        environment variables, with job-specific variables taking precedence.
+        
+        Args:
+            job_rule: The DispatchRule for the job
+            
+        Returns:
+            Combined environment variables dictionary
+        """
+        # Start with global environment variables
+        env_vars = self._get_env_vars()
+        
+        # Add job-specific environment variables if they exist
+        if job_rule.env:
+            env_vars.update(job_rule.env)
+            
+        return env_vars
 
     async def run_job_manually(self, job_name: str) -> Optional[JobExecutionResult]:
         """Manually trigger a job execution.

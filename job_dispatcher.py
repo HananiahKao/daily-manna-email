@@ -70,6 +70,7 @@ class DispatchRule:
     time: dt.time
     weekdays: Sequence[int]
     commands: Sequence[Sequence[str]]
+    env: Optional[Dict[str, str]] = None
 
     @property
     def weekdays_label(self) -> str:
@@ -169,6 +170,7 @@ def load_rules(config_path: Path) -> List[DispatchRule]:
                 time=_parse_time(time_str),
                 weekdays=_parse_weekdays(days),
                 commands=tuple(_coerce_command(cmd) for cmd in commands),
+                env=item.get("env"),
             )
         )
     return rules
@@ -257,7 +259,8 @@ def get_jobs_to_run(
     """
     jobs_to_run = []
     for rule in rules:
-        last_run = _parse_iso_datetime(state.get(rule.name))
+        last_run_str = state.get(rule.name)
+        last_run = _parse_iso_datetime(last_run_str) if last_run_str else None
         if _should_run(rule, now, last_run, max_delay):
             jobs_to_run.append(rule)
     return jobs_to_run

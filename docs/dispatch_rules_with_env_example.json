@@ -1,0 +1,51 @@
+[
+  {
+    "name": "daily-send",
+    "time": "06:00",
+    "days": ["daily"],
+    "commands": [["bash", "scripts/run_daily_stateful_ezoe.sh"]],
+    "env": {
+      "EMAIL_FROM": "daily@example.com",
+      "DEBUG_MODE": "1",
+      "LOG_LEVEL": "INFO"
+    }
+  },
+  {
+    "name": "weekly-summary",
+    "time": "21:00",
+    "days": [6],
+    "commands": [["bash", "scripts/run_weekly_schedule_summary.sh"]],
+    "env": {
+      "SUMMARY_RECIPIENTS": "admin@example.com,manager@example.com",
+      "INCLUDE_DEBUG_INFO": "false"
+    }
+  },
+  {
+    "name": "test-job",
+    "time": "12:00",
+    "days": ["monday", "wednesday", "friday"],
+    "commands": [["python", "scripts/test_script.py"]],
+    "env": {
+      "TEST_ENV": "staging",
+      "API_KEY": "test-key-12345",
+      "TIMEOUT": "300"
+    }
+  },
+  {
+    "name": "backup-job",
+    "time": "02:00",
+    "days": ["sunday"],
+    "commands": [["bash", "scripts/backup.sh"]],
+    "env": {
+      "BACKUP_PATH": "/backups/daily",
+      "RETENTION_DAYS": "30",
+      "COMPRESS": "true"
+    }
+  },
+  {
+    "name": "legacy-job",
+    "time": "09:00",
+    "days": ["daily"],
+    "commands": [["bash", "scripts/legacy_script.sh"]]
+  }
+]
