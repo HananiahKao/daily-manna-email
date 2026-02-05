@@ -2,13 +2,27 @@
   {
     "name": "daily-send",
     "time": "06:00",
-    "days": ["daily"],
-    "commands": [["bash", "scripts/run_daily_stateful_ezoe.sh"]]
+    "days": [
+      "daily"
+    ],
+    "commands": [
+      [
+        "bash",
+        "scripts/run_daily_stateful_ezoe.sh"
+      ]
+    ]
   },
   {
     "name": "weekly-summary",
     "time": "21:00",
-    "days": [6],
-    "commands": [["bash", "scripts/run_weekly_schedule_summary.sh"]]
+    "days": [
+      6
+    ],
+    "commands": [
+      [
+        "bash",
+        "scripts/run_weekly_schedule_summary.sh"
+      ]
+    ]
   }
 ]

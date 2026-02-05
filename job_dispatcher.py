@@ -86,6 +86,11 @@ def _parse_time(value: str) -> dt.time:
         raise ValueError(f"Invalid HH:MM time string: {value!r}") from exc
 
 
+def normalize_time_str(value: str) -> str:
+    parsed = _parse_time(value.strip())
+    return f"{parsed.hour:02d}:{parsed.minute:02d}"
+
+
 def _parse_weekdays(values: Sequence[str | int]) -> Sequence[int]:
     resolved: List[int] = []
     for raw in values:
@@ -123,6 +128,23 @@ def _default_rules() -> List[DispatchRule]:
             weekdays=(6,),  # Sunday
             commands=(("bash", "scripts/run_weekly_schedule_summary.sh"),),
         ),
+    ]
+
+
+def default_rules_config() -> List[Dict[str, object]]:
+    return [
+        {
+            "name": "daily-send",
+            "time": normalize_time_str(DEFAULT_DAILY_TIME),
+            "days": ["daily"],
+            "commands": [["bash", "scripts/run_daily_stateful_ezoe.sh"]],
+        },
+        {
+            "name": "weekly-summary",
+            "time": normalize_time_str(DEFAULT_SUMMARY_TIME),
+            "days": [6],
+            "commands": [["bash", "scripts/run_weekly_schedule_summary.sh"]],
+        },
     ]
 
 

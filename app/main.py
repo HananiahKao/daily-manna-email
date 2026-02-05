@@ -30,6 +30,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import schedule_manager as sm
 import content_source_factory
+import job_dispatcher
 
 from app.config import AppConfig, get_config
 from app.security import require_user, authenticate_user, login_required, require_user_or_redirect
@@ -108,6 +109,48 @@ class BatchUpdatePayload(BaseModel):
 
 class BatchSelectorParsePayload(BaseModel):
     input_text: str
+
+
+class DispatchRulePayload(BaseModel):
+    time: Optional[str] = None
+    days: Optional[List[str | int]] = None
+
+    @field_validator("time")
+    @classmethod
+    def _normalize_time(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return job_dispatcher.normalize_time_str(value)
+
+    @field_validator("days")
+    @classmethod
+    def _normalize_days(cls, value: Optional[List[str | int]]) -> Optional[List[str | int]]:
+        if value is None:
+            return None
+        
+        # Validate and normalize days
+        normalized = []
+        for day in value:
+            if isinstance(day, str):
+                day_str = day.strip().lower()
+                if day_str == "daily":
+                    return ["daily"]
+                raise ValueError(f"Invalid weekday: {day} (must be 0-6 or 'daily')")
+            elif isinstance(day, int):
+                if not 0 <= day <= 6:
+                    raise ValueError(f"Invalid weekday: {day} (must be 0-6)")
+                normalized.append(day)
+            else:
+                raise ValueError(f"Invalid weekday type: {type(day)}")
+        
+        # Remove duplicates and sort
+        normalized = sorted(list(set(normalized)))
+        
+        # If all days selected, return ["daily"]
+        if len(normalized) == 7:
+            return ["daily"]
+        
+        return normalized
 
 
 def git_last_modified_date(file_path: str) -> str:
@@ -777,6 +820,54 @@ def create_app() -> FastAPI:
             "count": len(deleted_dates)
         })
 
+    @app.get("/api/dispatch-rules", response_class=JSONResponse)
+    def api_dispatch_rules(
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        config_path = _resolve_dispatch_config_path()
+        rules = job_dispatcher.load_rules(config_path)
+        payload = {
+            "config_path": str(config_path),
+            "timezone": sm.TZ_NAME,
+            "rules": [
+                {
+                    "name": rule.name,
+                    "time": f"{rule.time.hour:02d}:{rule.time.minute:02d}",
+                    "weekdays": list(rule.weekdays),
+                    "weekdays_label": rule.weekdays_label,
+                }
+                for rule in rules
+            ],
+        }
+        return JSONResponse(payload)
+
+    @app.post("/api/dispatch-rules/{rule_name}", response_class=JSONResponse)
+    def api_update_dispatch_rule(
+        rule_name: str,
+        payload: DispatchRulePayload,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        config_path = _resolve_dispatch_config_path()
+        rules = _load_dispatch_config(config_path)
+        updated_rule: Optional[Dict[str, object]] = None
+        for rule in rules:
+            if rule.get("name") == rule_name:
+                if payload.time is not None:
+                    rule["time"] = payload.time
+                if payload.days is not None:
+                    rule["days"] = payload.days
+                updated_rule = rule
+                break
+
+        if updated_rule is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispatch rule not found")
+
+        _save_dispatch_config(config_path, rules)
+        return JSONResponse({
+            "name": updated_rule.get("name"),
+            "time": updated_rule.get("time"),
+            "days": updated_rule.get("days") or updated_rule.get("weekdays"),
+        })
 
     @app.post("/actions/{date}")
     def handle_action(
@@ -1007,6 +1098,23 @@ def _resolve_schedule_path(settings: AppConfig) -> Path:
     if settings.schedule_file:
         return settings.schedule_file
     return sm.get_schedule_path()
+
+
+def _resolve_dispatch_config_path() -> Path:
+    return job_dispatcher.DEFAULT_CONFIG_PATH
+
+
+def _load_dispatch_config(config_path: Path) -> List[Dict[str, object]]:
+    if config_path.exists():
+        with config_path.open("r", encoding="utf-8") as fh:
+            return json.load(fh)
+    return job_dispatcher.default_rules_config()
+
+
+def _save_dispatch_config(config_path: Path, rules: List[Dict[str, object]]) -> None:
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with config_path.open("w", encoding="utf-8") as fh:
+        json.dump(rules, fh, ensure_ascii=False, indent=2)
 
 
 def _serialize_entry(entry: Optional[sm.ScheduleEntry], date: dt.date) -> Dict[str, object]:

@@ -1,12 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Calendar · Daily Manna Email{% endblock %}
 {% block header_right %}
-  <button type="button" id="notification-bell" class="bell-icon" aria-label="Notifications">
-    <svg viewBox="0 0 24 24" fill="currentColor" class="bell-svg">
-      <path d="M12 2C10.896 2 10 2.896 10 4v1.07C7.835 5.732 6 7.814 6 10v6H4v2h16v-2h-2v-6c0-2.186-1.835-4.268-4-4.93V4c0-1.104-.896-2-2-2zM12 22c1.104 0 2-.896 2-2H10c0 1.104.896 2 2 2z"/>
-    </svg>
-    <span id="notification-dot" class="notification-dot" style="display: none;"></span>
-  </button>
+  <div class="header-actions">
+    <button type="button" id="dispatch-gear" class="gear-icon" aria-label="Dispatch settings">
+      <svg viewBox="0 0 24 24" fill="currentColor" class="gear-svg">
+        <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96c-.5-.38-1.04-.7-1.64-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.6.24-1.14.56-1.64.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.38 1.04.7 1.64.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.6-.24 1.14-.56 1.64-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2Z"/>
+      </svg>
+    </button>
+    <button type="button" id="notification-bell" class="bell-icon" aria-label="Notifications">
+      <svg viewBox="0 0 24 24" fill="currentColor" class="bell-svg">
+        <path d="M12 2C10.896 2 10 2.896 10 4v1.07C7.835 5.732 6 7.814 6 10v6H4v2h16v-2h-2v-6c0-2.186-1.835-4.268-4-4.93V4c0-1.104-.896-2-2-2zM12 22c1.104 0 2-.896 2-2H10c0 1.104.896 2 2 2z"/>
+      </svg>
+      <span id="notification-dot" class="notification-dot" style="display: none;"></span>
+    </button>
+  </div>
 {% endblock %}
 {% block content %}
 <section id="flash-messages" class="flash-messages">
@@ -176,6 +183,26 @@
     </div>
   </div>
 </div>
+<div id="dispatch-overlay" class="dispatch-overlay" hidden>
+  <div class="dispatch-center">
+    <div class="dispatch-header">
+      <div>
+        <h3>Dispatch Rules</h3>
+        <p class="dispatch-header-subtitle">Adjust job times in Asia/Taipei.</p>
+        <span class="dispatch-header-meta">Config: <code id="dispatch-config-path">Loading...</code></span>
+      </div>
+      <div class="dispatch-header-actions">
+        <button type="button" class="dispatch-refresh" aria-label="Refresh dispatch rules">↻</button>
+        <button class="dispatch-close" aria-label="Close">×</button>
+      </div>
+    </div>
+    <div id="dispatch-rules-list" class="dispatch-rules-list">
+      <div class="dispatch-rules-loading">Loading dispatch rules...</div>
+    </div>
+    <div id="dispatch-rules-feedback" class="dispatch-rules-feedback" role="status" aria-live="polite"></div>
+  </div>
+</div>
+<script defer src="/static/dispatch_rules.js"></script>
 <script>
   window.CalendarConfig = {
     schedulePath: "{{ schedule_path }}",
