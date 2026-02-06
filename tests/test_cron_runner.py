@@ -231,10 +231,16 @@ class TestCronJobRunner:
         command = ["echo", "success"]
         job_name = "test_job"
 
+        # Create a mock rule with required attributes
+        mock_rule = Mock()
+        mock_rule.name = job_name
+        mock_rule.commands = [command]
+        mock_rule.env = {}
+
         with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt:
             mock_attempt.return_value = None  # Success
 
-            await cron_runner._execute_job_with_retries(job_name, command, max_retries=2)
+            await cron_runner._execute_job_with_retries(job_name, command, mock_rule, max_retries=2)
 
             # Should only call once since it succeeded
             assert mock_attempt.call_count == 1
@@ -244,11 +250,17 @@ class TestCronJobRunner:
         command = ["failing", "command"]
         job_name = "test_job"
 
+        # Create a mock rule with required attributes
+        mock_rule = Mock()
+        mock_rule.name = job_name
+        mock_rule.commands = [command]
+        mock_rule.env = {}
+
         with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt:
             # First call fails, second succeeds
             mock_attempt.side_effect = [Exception("Failed"), None]
 
-            await cron_runner._execute_job_with_retries(job_name, command, max_retries=1)
+            await cron_runner._execute_job_with_retries(job_name, command, mock_rule, max_retries=1)
 
             # Should call twice: initial + 1 retry
             assert mock_attempt.call_count == 2
@@ -258,11 +270,17 @@ class TestCronJobRunner:
         command = ["always", "fails"]
         job_name = "test_job"
 
+        # Create a mock rule with required attributes
+        mock_rule = Mock()
+        mock_rule.name = job_name
+        mock_rule.commands = [command]
+        mock_rule.env = {}
+
         with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt:
             mock_attempt.side_effect = Exception("Always fails")
 
             with pytest.raises(Exception, match="Always fails"):
-                await cron_runner._execute_job_with_retries(job_name, command, max_retries=1)
+                await cron_runner._execute_job_with_retries(job_name, command, mock_rule, max_retries=1)
 
             # Should call max_retries + 1 times
             assert mock_attempt.call_count == 2

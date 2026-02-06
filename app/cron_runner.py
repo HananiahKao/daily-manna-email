@@ -154,6 +154,7 @@ class CronJobRunner:
         await self._execute_job_with_retries(
             job_name=job_name,
             command=command,
+            rule=rule,
             max_retries=3,  # Default retries
             timeout=600  # 10 minutes
         )
@@ -162,6 +163,7 @@ class CronJobRunner:
         self,
         job_name: str,
         command: List[str],
+        rule: job_dispatcher.DispatchRule,
         max_retries: int = 3,
         timeout: int = 600
     ) -> None:
@@ -170,6 +172,7 @@ class CronJobRunner:
         Args:
             job_name: Name of the job for tracking
             command: Command to execute
+            rule: DispatchRule containing job-specific environment variables
             max_retries: Maximum number of retries
             timeout: Command timeout in seconds
         """
@@ -183,7 +186,8 @@ class CronJobRunner:
                     command=command,
                     timeout=timeout,
                     attempt_info=attempt_info,
-                    job_result=job_result
+                    job_result=job_result,
+                    rule=rule
                 )
                 return  # Success - exit retry loop
             except Exception as e:

@@ -90,9 +90,15 @@ class TestCronRunnerJobTrackerIntegration:
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
+        # Create a mock rule with required attributes
+        mock_rule = Mock()
+        mock_rule.name = "test_job"
+        mock_rule.commands = [["echo", "success"]]
+        mock_rule.env = {}
+
         with patch('app.cron_runner.asyncio.create_subprocess_exec', return_value=mock_process):
             # Execute a job
-            await runner._execute_job_with_retries("test_job", ["echo", "success"])
+            await runner._execute_job_with_retries("test_job", ["echo", "success"], mock_rule)
 
             # Check that job was tracked
             recent_executions = runner.job_tracker.get_recent_executions("test_job")
@@ -115,10 +121,16 @@ class TestCronRunnerJobTrackerIntegration:
         mock_process.returncode = 1
         mock_process.wait = AsyncMock()
 
+        # Create a mock rule with required attributes
+        mock_rule = Mock()
+        mock_rule.name = "failing_job"
+        mock_rule.commands = [["failing", "command"]]
+        mock_rule.env = {}
+
         with patch('app.cron_runner.asyncio.create_subprocess_exec', return_value=mock_process):
             # Execute a job that should fail after exhausting retries
             with pytest.raises(Exception, match="Command failed with exit code 1"):
-                await runner._execute_job_with_retries("failing_job", ["failing", "command"], max_retries=0)  # No retries
+                await runner._execute_job_with_retries("failing_job", ["failing", "command"], mock_rule, max_retries=0)  # No retries
 
             # Check that job failure was tracked with proper status update
             recent_executions = runner.job_tracker.get_recent_executions("failing_job")
@@ -146,9 +158,15 @@ class TestCronRunnerJobTrackerIntegration:
         mock_process_success.returncode = 0
         mock_process_success.wait = AsyncMock()
 
+        # Create a mock rule with required attributes
+        mock_rule = Mock()
+        mock_rule.name = "retry_job"
+        mock_rule.commands = [["retry", "command"]]
+        mock_rule.env = {}
+
         with patch('app.cron_runner.asyncio.create_subprocess_exec', side_effect=[mock_process_fail, mock_process_success]):
             # Execute job with retry
-            await runner._execute_job_with_retries("retry_job", ["retry", "command"], max_retries=1)
+            await runner._execute_job_with_retries("retry_job", ["retry", "command"], mock_rule, max_retries=1)
 
             # Check that both attempts were tracked
             recent_executions = runner.job_tracker.get_recent_executions("retry_job")
@@ -190,10 +208,11 @@ class TestCronRunnerJobTrackerIntegration:
         """Test that dispatcher trigger properly updates job execution state."""
         runner = cron_runner_with_tracker
 
-        # Create a mock rule
+        # Create a mock rule with proper env attribute
         mock_rule = Mock()
         mock_rule.name = "state_test_job"
         mock_rule.commands = [["echo", "test"]]
+        mock_rule.env = {}  # Add proper env attribute
 
         # Mock successful execution
         mock_process = AsyncMock()
@@ -224,10 +243,11 @@ class TestCronRunnerJobTrackerIntegration:
         """Test manual job execution through the full pipeline."""
         runner = cron_runner_with_tracker
 
-        # Mock dispatcher rule
+        # Mock dispatcher rule with proper env attribute
         mock_rule = Mock()
         mock_rule.name = "manual_test"
         mock_rule.commands = [["echo", "manual execution"]]
+        mock_rule.env = {}  # Add proper env attribute
 
         # Mock successful execution
         mock_process = AsyncMock()
@@ -274,8 +294,14 @@ class TestCronRunnerJobTrackerIntegration:
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
+        # Create a mock rule with required attributes
+        mock_rule = Mock()
+        mock_rule.name = "json_job"
+        mock_rule.commands = [["produce", "json"]]
+        mock_rule.env = {}
+
         with patch('app.cron_runner.asyncio.create_subprocess_exec', return_value=mock_process):
-            await runner._execute_job_with_retries("json_job", ["produce", "json"])
+            await runner._execute_job_with_retries("json_job", ["produce", "json"], mock_rule)
 
             recent_executions = runner.job_tracker.get_recent_executions("json_job")
             assert len(recent_executions) == 1

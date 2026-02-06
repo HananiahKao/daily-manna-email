@@ -128,6 +128,11 @@ class TestMultipleJobsDueAtSameTime:
 
             mock_create.side_effect = create_subprocess_side_effect
 
+            # Add env attributes to mock rules
+            mock_rule1.env = {}
+            mock_rule2.env = {}
+            mock_rule3.env = {}
+
             # Patch asyncio.sleep to be instant
             with patch('app.cron_runner.asyncio.sleep', return_value=None):
                 await runner._run_dispatcher_trigger()
@@ -150,18 +155,21 @@ class TestMultipleJobsDueAtSameTime:
         mock_rule1.time = dt.time(6, 0)
         mock_rule1.weekdays = (0, 1, 2, 3, 4, 5, 6)
         mock_rule1.commands = [["echo", "success1"]]
+        mock_rule1.env = {}
 
         mock_rule2 = Mock()
         mock_rule2.name = "job2_fail"
         mock_rule2.time = dt.time(6, 0)
         mock_rule2.weekdays = (0, 1, 2, 3, 4, 5, 6)
         mock_rule2.commands = [["failing", "command"]]
+        mock_rule2.env = {}
 
         mock_rule3 = Mock()
         mock_rule3.name = "job3_success"
         mock_rule3.time = dt.time(6, 0)
         mock_rule3.weekdays = (0, 1, 2, 3, 4, 5, 6)
         mock_rule3.commands = [["echo", "success3"]]
+        mock_rule3.env = {}
 
         # Mock current time to trigger all jobs
         now = dt.datetime(2024, 1, 1, 6, 0, tzinfo=sm.TAIWAN_TZ)
@@ -227,12 +235,14 @@ class TestMultipleJobsDueAtSameTime:
         mock_rule1.time = dt.time(6, 0)
         mock_rule1.weekdays = (0, 1, 2, 3, 4, 5, 6)
         mock_rule1.commands = [["echo", "state1"]]
+        mock_rule1.env = {}
 
         mock_rule2 = Mock()
         mock_rule2.name = "state_job2"
         mock_rule2.time = dt.time(6, 0)
         mock_rule2.weekdays = (0, 1, 2, 3, 4, 5, 6)
         mock_rule2.commands = [["echo", "state2"]]
+        mock_rule2.env = {}
 
         # Mock current time to trigger all jobs
         now = dt.datetime(2024, 1, 1, 6, 0, tzinfo=sm.TAIWAN_TZ)
@@ -279,12 +289,14 @@ class TestMultipleJobsDueAtSameTime:
         mock_rule1.time = dt.time(6, 0)
         mock_rule1.weekdays = (0, 1, 2, 3, 4, 5, 6)
         mock_rule1.commands = [["echo", "retry1"]]
+        mock_rule1.env = {}
 
         mock_rule2 = Mock()
         mock_rule2.name = "retry_job2"
         mock_rule2.time = dt.time(6, 0)
         mock_rule2.weekdays = (0, 1, 2, 3, 4, 5, 6)
         mock_rule2.commands = [["echo", "retry2"]]
+        mock_rule2.env = {}
 
         # Mock current time to trigger all jobs
         now = dt.datetime(2024, 1, 1, 6, 0, tzinfo=sm.TAIWAN_TZ)
