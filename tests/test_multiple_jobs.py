@@ -180,27 +180,26 @@ class TestMultipleJobsDueAtSameTime:
              patch('app.cron_runner.job_dispatcher.get_jobs_to_run', return_value=[mock_rule1, mock_rule2, mock_rule3]), \
              patch('app.cron_runner.job_dispatcher.update_job_run_time') as mock_update_time, \
              patch('app.cron_runner.job_dispatcher.save_state') as mock_save_state, \
-             patch('app.cron_runner.asyncio.create_subprocess_exec') as mock_create:
+             patch('app.cron_runner.asyncio.create_subprocess_exec') as mock_create, \
+             patch('app.cron_runner.asyncio.sleep', return_value=None):  # Patch asyncio.sleep to prevent hanging
 
-            # Patch asyncio.sleep to be instant
-            with patch('app.cron_runner.asyncio.sleep', return_value=None):
-                # Mock subprocess calls: job1 succeeds, job2 fails (with retries), job3 succeeds
-                mock_create.side_effect = [
-                    # job1_success
-                    self._create_success_mock(),
-                    # job2_fail - attempt 1 (fail)
-                    self._create_failure_mock(),
-                    # job2_fail - attempt 2 (fail)
-                    self._create_failure_mock(),
-                    # job2_fail - attempt 3 (fail)
-                    self._create_failure_mock(),
-                    # job2_fail - attempt 4 (fail)
-                    self._create_failure_mock(),
-                    # job3_success - attempt 1 (success)
-                    self._create_success_mock()
-                ]
+            # Mock subprocess calls: job1 succeeds, job2 fails (with retries), job3 succeeds
+            mock_create.side_effect = [
+                # job1_success
+                self._create_success_mock(),
+                # job2_fail - attempt 1 (fail)
+                self._create_failure_mock(),
+                # job2_fail - attempt 2 (fail)
+                self._create_failure_mock(),
+                # job2_fail - attempt 3 (fail)
+                self._create_failure_mock(),
+                # job2_fail - attempt 4 (fail)
+                self._create_failure_mock(),
+                # job3_success - attempt 1 (success)
+                self._create_success_mock()
+            ]
 
-                await runner._run_dispatcher_trigger()
+            await runner._run_dispatcher_trigger()
 
             # Verify all jobs were attempted with retries
             # Each job can have up to 4 attempts (1 initial + 3 retries)
@@ -307,7 +306,8 @@ class TestMultipleJobsDueAtSameTime:
              patch('app.cron_runner.job_dispatcher.get_jobs_to_run', return_value=[mock_rule1, mock_rule2]), \
              patch('app.cron_runner.job_dispatcher.update_job_run_time') as mock_update_time, \
              patch('app.cron_runner.job_dispatcher.save_state') as mock_save_state, \
-             patch('app.cron_runner.asyncio.create_subprocess_exec') as mock_create:
+             patch('app.cron_runner.asyncio.create_subprocess_exec') as mock_create, \
+             patch('app.cron_runner.asyncio.sleep', return_value=None):  # Patch asyncio.sleep to prevent hanging
 
             # Mock subprocess calls with retries
             retry_attempts = []
@@ -328,9 +328,7 @@ class TestMultipleJobsDueAtSameTime:
                 return mock_process
             mock_create.side_effect = create_subprocess_side_effect
 
-            # Patch asyncio.sleep to be instant
-            with patch('app.cron_runner.asyncio.sleep', return_value=None):
-                await runner._run_dispatcher_trigger()
+            await runner._run_dispatcher_trigger()
 
             # Verify each job had its own retry attempts
             # job1: 2 attempts (fail, success)

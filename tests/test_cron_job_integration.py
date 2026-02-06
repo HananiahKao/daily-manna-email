@@ -127,7 +127,8 @@ class TestCronRunnerJobTrackerIntegration:
         mock_rule.commands = [["failing", "command"]]
         mock_rule.env = {}
 
-        with patch('app.cron_runner.asyncio.create_subprocess_exec', return_value=mock_process):
+        with patch('app.cron_runner.asyncio.create_subprocess_exec', return_value=mock_process), \
+             patch('app.cron_runner.asyncio.sleep', return_value=None):  # Patch asyncio.sleep to prevent hanging
             # Execute a job that should fail after exhausting retries
             with pytest.raises(Exception, match="Command failed with exit code 1"):
                 await runner._execute_job_with_retries("failing_job", ["failing", "command"], mock_rule, max_retries=0)  # No retries
@@ -164,7 +165,8 @@ class TestCronRunnerJobTrackerIntegration:
         mock_rule.commands = [["retry", "command"]]
         mock_rule.env = {}
 
-        with patch('app.cron_runner.asyncio.create_subprocess_exec', side_effect=[mock_process_fail, mock_process_success]):
+        with patch('app.cron_runner.asyncio.create_subprocess_exec', side_effect=[mock_process_fail, mock_process_success]), \
+             patch('app.cron_runner.asyncio.sleep', return_value=None):  # Patch asyncio.sleep to prevent hanging
             # Execute job with retry
             await runner._execute_job_with_retries("retry_job", ["retry", "command"], mock_rule, max_retries=1)
 

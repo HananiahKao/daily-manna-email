@@ -256,7 +256,8 @@ class TestCronJobRunner:
         mock_rule.commands = [command]
         mock_rule.env = {}
 
-        with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt:
+        with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt, \
+             patch('app.cron_runner.asyncio.sleep', return_value=None):  # Patch asyncio.sleep to prevent hanging
             # First call fails, second succeeds
             mock_attempt.side_effect = [Exception("Failed"), None]
 
@@ -276,7 +277,8 @@ class TestCronJobRunner:
         mock_rule.commands = [command]
         mock_rule.env = {}
 
-        with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt:
+        with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt, \
+             patch('app.cron_runner.asyncio.sleep', return_value=None):  # Patch asyncio.sleep to prevent hanging
             mock_attempt.side_effect = Exception("Always fails")
 
             with pytest.raises(Exception, match="Always fails"):
