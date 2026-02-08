@@ -373,6 +373,35 @@ body {
   display: none;
 }
 
+/* Common overlay styles */
+.overlay {
+  position: fixed;
+  z-index: 40;
+}
+
+.overlay[hidden] {
+  display: none !important;
+}
+
+/* Ensure proper z-index stacking for overlays */
+.calendar-popover {
+  z-index: 50;
+}
+
+.notification-overlay,
+.dispatch-overlay {
+  z-index: 50;
+}
+
+.calendar-move-overlay,
+.calendar-edit-overlay {
+  z-index: 40;
+}
+
+.job-details-modal-overlay {
+  z-index: 60;
+}
+
 .popover-header {
   display: flex;
   justify-content: space-between;

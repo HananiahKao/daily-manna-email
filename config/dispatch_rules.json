@@ -10,7 +10,8 @@
         "bash",
         "scripts/run_daily_stateful_ezoe.sh"
       ]
-    ],"env": {
+    ],
+    "env": {
       "CONTENT_SOURCE": "ezoe"
     }
   },
@@ -25,7 +26,8 @@
         "bash",
         "scripts/run_daily_stateful_ezoe.sh"
       ]
-    ],"env": {
+    ],
+    "env": {
       "CONTENT_SOURCE": "wix"
     }
   },

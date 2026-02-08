@@ -317,6 +317,20 @@
   };
 
   const openOverlay = () => {
+    // Hide all other overlays before showing this one
+    if (window.hideAllOverlaysExcept) {
+      window.hideAllOverlaysExcept('dispatch-overlay');
+    } else {
+      // Fallback to manual hiding if centralized function not available
+      const otherOverlays = ['calendar-popover', 'date-adjust-overlay', 'batch-edit-overlay', 'notification-overlay'];
+      otherOverlays.forEach(id => {
+        const overlay = document.getElementById(id);
+        if (overlay && !overlay.hidden) {
+          overlay.hidden = true;
+        }
+      });
+    }
+
     positionOverlay();
     clearFeedback();
     loadRules();
@@ -327,6 +341,9 @@
     overlayEl.hidden = true;
     stopPolling();
   };
+
+  // Expose hide function for centralized overlay management
+  window.hideDispatchOverlay = closeOverlay;
 
   const toggleOverlay = () => {
     if (overlayEl.hidden) {

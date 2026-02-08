@@ -261,9 +261,7 @@
     bindGlobalKeys() {
       document.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
-          this.closePopover();
-          this.hideDateAdjustOverlay();
-          this.hideBatchEditOverlay();
+          this.closeAllOverlays();
           return;
         }
         if (
@@ -280,6 +278,56 @@
           this.showDateAdjustOverlay();
         }
       });
+    }
+
+    // Centralized overlay management
+    closeAllOverlays() {
+      this.closePopover();
+      this.hideDateAdjustOverlay();
+      this.hideBatchEditOverlay();
+      this.hideNotificationOverlay();
+      this.hideDispatchOverlay();
+    }
+
+    // Overlay visibility helpers
+    isOverlayVisible(overlayId) {
+      const overlay = document.getElementById(overlayId);
+      return overlay && !overlay.hidden;
+    }
+
+    hideAllOverlaysExcept(exceptId) {
+      const overlayIds = [
+        'calendar-popover',
+        'date-adjust-overlay',
+        'batch-edit-overlay',
+        'notification-overlay',
+        'dispatch-overlay'
+      ];
+
+      overlayIds.forEach(id => {
+        if (id !== exceptId) {
+          const overlay = document.getElementById(id);
+          if (overlay && !overlay.hidden) {
+            overlay.hidden = true;
+          }
+        }
+      });
+    }
+
+    // Notification overlay management
+    hideNotificationOverlay() {
+      const overlay = document.getElementById('notification-overlay');
+      if (overlay) {
+        overlay.hidden = true;
+      }
+    }
+
+    // Dispatch overlay management
+    hideDispatchOverlay() {
+      const overlay = document.getElementById('dispatch-overlay');
+      if (overlay) {
+        overlay.hidden = true;
+      }
     }
 
     bindScrollBehavior() {
@@ -1027,6 +1075,10 @@
       if (!this.popoverEl) {
         return;
       }
+      
+      // Hide all other overlays before showing this one
+      this.hideAllOverlaysExcept('calendar-popover');
+      
       const entry = this.entriesIndex.get(date);
       const isMissing = !entry || entry.is_missing || resetOnly;
       this.popoverDateInput.value = date;
@@ -1084,6 +1136,9 @@
       if (!this.dateAdjustOverlay) {
         return;
       }
+      // Hide all other overlays before showing this one
+      this.hideAllOverlaysExcept('date-adjust-overlay');
+      
       const earliest = [...this.selection].sort()[0];
       this.dateAdjustInput.value = earliest || "";
       this.dateAdjustOverlay.hidden = false;
@@ -1100,6 +1155,9 @@
       if (!this.batchEditOverlay || !this.selection.size) {
         return;
       }
+
+      // Hide all other overlays before showing this one
+      this.hideAllOverlaysExcept('batch-edit-overlay');
 
       // Clear form
       if (this.batchSelectorInput) {
@@ -1389,5 +1447,9 @@
   document.addEventListener("DOMContentLoaded", () => {
     const app = new CalendarApp(window.CalendarConfig || {});
     app.init();
+    
+    // Expose overlay management functions globally
+    window.hideAllOverlaysExcept = (exceptId) => app.hideAllOverlaysExcept(exceptId);
+    window.closeAllOverlays = () => app.closeAllOverlays();
   });
 })();
