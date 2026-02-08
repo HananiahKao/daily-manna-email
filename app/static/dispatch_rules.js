@@ -19,6 +19,8 @@
   const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
   const weekdayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+  let feedbackTimeout = null;
+
   const setFeedback = (type, message) => {
     if (!feedbackEl) {
       return;
@@ -30,6 +32,16 @@
     } else if (type === "error") {
       feedbackEl.classList.add("is-error");
     }
+    
+    // Clear existing timeout
+    if (feedbackTimeout) {
+      clearTimeout(feedbackTimeout);
+    }
+    
+    // Set new timeout to clear feedback after 3 seconds
+    feedbackTimeout = setTimeout(() => {
+      clearFeedback();
+    }, 3000);
   };
 
   const clearFeedback = () => {
@@ -38,6 +50,10 @@
     }
     feedbackEl.textContent = "";
     feedbackEl.classList.remove("is-success", "is-error");
+    if (feedbackTimeout) {
+      clearTimeout(feedbackTimeout);
+      feedbackTimeout = null;
+    }
   };
 
   const formatJobName = (name) => {
