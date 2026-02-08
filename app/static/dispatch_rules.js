@@ -185,6 +185,14 @@
           }
         });
         
+        // Update meta text live
+        if (selectedDays.length === 7) {
+          meta.textContent = "Runs daily";
+        } else {
+          const daysText = formatWeekdays(selectedDays);
+          meta.textContent = daysText ? `Runs on ${daysText}` : "Schedule locked";
+        }
+        
         updateSaveState();
       };
       
