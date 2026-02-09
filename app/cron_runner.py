@@ -105,7 +105,7 @@ class CronJobRunner:
                 """Wrap job execution with state tracking."""
                 try:
                     # Execute job with full retry logic and tracking
-                    await self._execute_job_from_rule(rule.name, rule)
+                    await self._execute_job_from_rule(rule)
                     # On successful execution, update dispatch state
                     job_dispatcher.update_job_run_time(state, rule.name, now)
                     executed_jobs.append(rule.name)
@@ -135,25 +135,18 @@ class CronJobRunner:
             # Don't track dispatcher failures as individual job failures
             # since this is an internal cron mechanism
 
-    async def _execute_job_from_rule(self, job_name: str, rule: job_dispatcher.DispatchRule) -> None:
+    async def _execute_job_from_rule(self, rule: job_dispatcher.DispatchRule) -> None:
         """Execute a job from a dispatcher rule with tracking and retry logic.
 
         Args:
-            job_name: Name of the job for tracking
-            rule: DispatchRule containing the commands to execute
+            rule: DispatchRule containing the job information and commands to execute
         """
         # Use the first command from the rule (most jobs have one command)
         if not rule.commands:
-            logger.error(f"Job {job_name} has no commands to execute")
+            logger.error(f"Job {rule.name} has no commands to execute")
             return
 
-        # For manual execution, just run the first command
-        # (Most jobs have a single command, but dispatcher supports multiple)
-        command = list(rule.commands[0])
-
         await self._execute_job_with_retries(
-            job_name=job_name,
-            command=command,
             rule=rule,
             max_retries=3,  # Default retries
             timeout=600  # 10 minutes
@@ -161,8 +154,6 @@ class CronJobRunner:
 
     async def _execute_job_with_retries(
         self,
-        job_name: str,
-        command: List[str],
         rule: job_dispatcher.DispatchRule,
         max_retries: int = 3,
         timeout: int = 600
@@ -170,14 +161,19 @@ class CronJobRunner:
         """Execute a job with proper retry loop (no recursion).
 
         Args:
-            job_name: Name of the job for tracking
-            command: Command to execute
-            rule: DispatchRule containing job-specific environment variables
+            rule: DispatchRule containing job information and environment variables
             max_retries: Maximum number of retries
             timeout: Command timeout in seconds
         """
+        # Use the first command from the rule (most jobs have one command)
+        if not rule.commands:
+            logger.error(f"Job {rule.name} has no commands to execute")
+            return
+            
+        command = list(rule.commands[0])
+        
         # Create job result once for all attempts - logs will accumulate
-        job_result = self.job_tracker.start_job(job_name, max_retries)
+        job_result = self.job_tracker.start_job(rule.name, max_retries)
 
         for attempt in range(max_retries + 1):  # +1 for initial attempt
             attempt_info = f"Attempt {attempt + 1}/{max_retries + 1}" if attempt > 0 else None
@@ -192,10 +188,10 @@ class CronJobRunner:
                 return  # Success - exit retry loop
             except Exception as e:
                 if attempt < max_retries:
-                    logger.info(f"Job {job_name} failed ({attempt_info or 'initial'}), retrying in 60 seconds")
+                    logger.info(f"Job {rule.name} failed ({attempt_info or 'initial'}), retrying in 60 seconds")
                     await asyncio.sleep(60)  # Wait 1 minute before retry
                 else:
-                    logger.error(f"Job {job_name} failed permanently after {max_retries + 1} attempts")
+                    logger.error(f"Job {rule.name} failed permanently after {max_retries + 1} attempts")
                     # Set final status to failed when all retries are exhausted
                     self.job_tracker.update_job(job_result, status="failed")
                     raise  # Re-raise the last exception
@@ -206,8 +202,8 @@ class CronJobRunner:
         timeout: int = 600,
         attempt_info: Optional[str] = None,
         job_result: Optional[JobExecutionResult] = None,
-        job_name: Optional[str] = None,
-        rule: Optional[job_dispatcher.DispatchRule] = None
+        rule: Optional[job_dispatcher.DispatchRule] = None,
+        job_name: Optional[str] = None
     ) -> None:
         """Execute a single job attempt without retries.
 
@@ -216,7 +212,8 @@ class CronJobRunner:
             timeout: Command timeout in seconds
             attempt_info: Optional retry attempt marker (e.g., "Attempt 2/4")
             job_result: Existing JobExecutionResult to accumulate logs into (for retries)
-            job_name: Job name for single attempts (when job_result is None)
+            rule: DispatchRule containing job information (when job_result is None)
+            job_name: Job name for single attempts (when both job_result and rule are None)
 
         Raises:
             Exception: If the job execution fails
@@ -224,11 +221,15 @@ class CronJobRunner:
         if job_result is not None:
             # Retry scenario: use existing job result
             job_name = job_result.job_name
+        elif rule is not None:
+            # Single attempt scenario: create new job result using rule
+            job_name = rule.name
+            job_result = self.job_tracker.start_job(job_name, 0)
         elif job_name is not None:
-            # Single attempt scenario: create new job result
+            # Backward compatibility: create new job result using job_name
             job_result = self.job_tracker.start_job(job_name, 0)
         else:
-            raise ValueError("Either job_result or job_name must be provided")
+            raise ValueError("Either job_result, rule, or job_name must be provided")
 
         try:
             logger.info(f"Starting job: {job_name}")
@@ -427,7 +428,7 @@ class CronJobRunner:
             return None
 
         # Execute the job's commands manually with tracking
-        await self._execute_job_from_rule(job_name, rule)
+        await self._execute_job_from_rule(rule)
         return self.job_tracker.get_recent_executions(job_name, limit=1)[0] if self.job_tracker.get_recent_executions(job_name, limit=1) else None
 
     def get_scheduler_status(self) -> Dict[str, Any]:

@@ -183,7 +183,7 @@ class TestCronJobRunner:
             await cron_runner._run_dispatcher_trigger()
 
             # Verify job was executed
-            mock_execute.assert_called_once_with("test_job", mock_rule)
+            mock_execute.assert_called_once_with(mock_rule)
             # Verify state was updated and saved
             mock_update_run_time.assert_called_once()
             mock_save_state.assert_called_once()
@@ -209,7 +209,7 @@ class TestCronJobRunner:
             await cron_runner._run_dispatcher_trigger()
 
             # Verify job was attempted
-            mock_execute.assert_called_once_with("failing_job", mock_rule)
+            mock_execute.assert_called_once_with(mock_rule)
 
     def test_execute_job_from_rule_with_commands(self, cron_runner):
         """Test executing job from rule with commands."""
@@ -240,7 +240,7 @@ class TestCronJobRunner:
         with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt:
             mock_attempt.return_value = None  # Success
 
-            await cron_runner._execute_job_with_retries(job_name, command, mock_rule, max_retries=2)
+            await cron_runner._execute_job_with_retries(mock_rule, max_retries=2)
 
             # Should only call once since it succeeded
             assert mock_attempt.call_count == 1
@@ -261,7 +261,7 @@ class TestCronJobRunner:
             # First call fails, second succeeds
             mock_attempt.side_effect = [Exception("Failed"), None]
 
-            await cron_runner._execute_job_with_retries(job_name, command, mock_rule, max_retries=1)
+            await cron_runner._execute_job_with_retries(mock_rule, max_retries=1)
 
             # Should call twice: initial + 1 retry
             assert mock_attempt.call_count == 2
@@ -282,7 +282,7 @@ class TestCronJobRunner:
             mock_attempt.side_effect = Exception("Always fails")
 
             with pytest.raises(Exception, match="Always fails"):
-                await cron_runner._execute_job_with_retries(job_name, command, mock_rule, max_retries=1)
+                await cron_runner._execute_job_with_retries(mock_rule, max_retries=1)
 
             # Should call max_retries + 1 times
             assert mock_attempt.call_count == 2
@@ -428,7 +428,7 @@ class TestCronJobRunner:
             result = await cron_runner.run_job_manually(job_name)
 
             assert result == mock_result
-            mock_execute.assert_called_once_with(job_name, mock_rule)
+            mock_execute.assert_called_once_with(mock_rule)
 
     async def test_run_job_manually_unknown_job(self, cron_runner):
         """Test manual execution of unknown job."""
@@ -621,7 +621,7 @@ class TestGlobalCronRunner:
 
         # Should not raise or execute anything - but method calls async internally
         # For testing, we'll just call it (it should not execute anything)
-        await cron_runner._execute_job_from_rule("empty_job", mock_rule)
+        await cron_runner._execute_job_from_rule(mock_rule)
 
     def test_execute_job_from_rule_multiple_commands(self, cron_runner):
         """Test executing job with multiple commands (uses first one)."""
