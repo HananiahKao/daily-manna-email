@@ -1286,6 +1286,50 @@ kbd {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.caffeine-icon {
+  position: relative;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  color: #d1d5db;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.caffeine-icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f3f4f6;
+}
+
+.caffeine-icon.caffeine-active {
+  color: #10b981;
+  text-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+}
+
+.caffeine-icon.caffeine-inactive {
+  color: #6b7280;
+}
+
+.caffeine-svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.caffeine-status {
+  font-size: 0.6rem;
+  font-weight: bold;
+  margin-left: 0.1rem;
+  transition: color 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .gear-icon {
   position: relative;
   border: none;
@@ -1346,6 +1390,169 @@ kbd {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.caffeine-overlay {
+  position: fixed;
+  z-index: 50;
+}
+
+.caffeine-overlay[hidden] {
+  display: none !important;
+}
+
+.caffeine-center {
+  position: absolute;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(15, 23, 42, 0.3);
+  border: 1px solid #e5e7eb;
+  min-width: 380px;
+  max-width: 560px;
+  max-height: 480px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.caffeine-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  gap: 0.75rem;
+}
+
+.caffeine-header > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.caffeine-header h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 1.1rem;
+}
+
+.caffeine-header-subtitle {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.caffeine-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.caffeine-close {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.caffeine-close:hover {
+  background: #f3f4f6;
+}
+
+.caffeine-content {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.caffeine-info,
+.caffeine-status-section,
+.caffeine-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.caffeine-info p,
+.caffeine-status-section p,
+.caffeine-details p {
+  margin: 0;
+}
+
+.caffeine-info strong,
+.caffeine-status-section strong,
+.caffeine-details strong {
+  color: #111827;
+  font-weight: 600;
+}
+
+.caffeine-mode-status {
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.caffeine-status-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.caffeine-status-inactive {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.caffeine-status-error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.caffeine-details ul {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.caffeine-details li {
+  margin-bottom: 0.5rem;
+  color: #4b5563;
+}
+
+.caffeine-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
+.caffeine-refresh-btn {
+  background: #4f46e5;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.caffeine-refresh-btn:hover {
+  background: #4338ca;
+}
+
+.caffeine-refresh-btn:active {
+  transform: scale(0.98);
 }
 
 .dispatch-overlay {
