@@ -571,6 +571,32 @@ class TestGlobalCronRunner:
             call_kwargs = mock_update_job.call_args[1]
             assert call_kwargs['json_output'] == {"result": "success"}
 
+    async def test_execute_job_single_attempt_process_timeout_kill(self, cron_runner):
+        """Test job timeout handling with process kill and cleanup."""
+        command = ["slow", "command"]
+        job_name = "timeout_job"
+
+        # Create a more realistic mock process that simulates kill and wait
+        mock_process = AsyncMock()
+        mock_process.kill = AsyncMock()
+        mock_process.wait = AsyncMock()
+
+        with patch('app.cron_runner.asyncio.create_subprocess_exec', return_value=mock_process), \
+             patch.object(cron_runner.job_tracker, 'start_job') as mock_start_job, \
+             patch.object(cron_runner.job_tracker, 'update_job') as mock_update_job:
+
+            mock_job_result = Mock()
+            mock_start_job.return_value = mock_job_result
+
+            # Make wait_for raise TimeoutError
+            with patch('app.cron_runner.asyncio.wait_for', side_effect=asyncio.TimeoutError):
+                with pytest.raises(Exception, match="timed out"):
+                    await cron_runner._execute_job_single_attempt(command, timeout=10, job_name=job_name)
+
+                # Verify process.kill() and process.wait() were called
+                mock_process.kill.assert_called_once()
+                mock_process.wait.assert_called_once()
+
     async def test_execute_job_single_attempt_process_exception(self, cron_runner):
         """Test handling of subprocess creation exceptions."""
         command = ["invalid", "command"]
@@ -612,6 +638,122 @@ class TestGlobalCronRunner:
             assert 'TEST_VAR' in env_arg
             assert env_arg['TEST_VAR'] == 'test_value'
 
+    def test_get_job_env_vars_combines_and_overrides(self, cron_runner):
+        """Test that job-specific env vars override global vars from .env file."""
+        # Create a mock dispatch rule with job-specific env vars
+        mock_rule = Mock()
+        mock_rule.env = {
+            "TEST_VAR": "job_specific_value",
+            "NEW_VAR": "new_value"
+        }
+
+        # Get combined env vars
+        job_env = cron_runner._get_job_env_vars(mock_rule)
+
+        # Verify job-specific var overrides global var
+        assert job_env["TEST_VAR"] == "job_specific_value"
+        # Verify new job-specific var is added
+        assert job_env["NEW_VAR"] == "new_value"
+
+    def test_get_job_env_vars_with_invalid_env_file(self, cron_runner, temp_project_root):
+        """Test handling of invalid .env file with errors."""
+        env_file = temp_project_root / ".env"
+        with open(env_file, 'w', encoding='utf-8') as f:
+            f.write("INVALID LINE WITHOUT EQUALS SIGN\n")
+            f.write("VALID_VAR=valid_value\n")
+            f.write("=INVALID_KEY\n")
+
+        # Should handle invalid lines gracefully
+        env_vars = cron_runner._get_env_vars()
+        assert "VALID_VAR" in env_vars
+        assert env_vars["VALID_VAR"] == "valid_value"
+        # Invalid lines should not be included
+        assert "INVALID LINE WITHOUT EQUALS SIGN" not in env_vars
+        assert "" not in env_vars  # Empty key should not be present
+
+    def test_get_env_vars_with_exception(self, cron_runner, temp_project_root):
+        """Test handling of exceptions when loading .env file."""
+        env_file = temp_project_root / ".env"
+        # Create a directory instead of a file to cause an exception
+        env_file.unlink()
+        env_file.mkdir()
+
+        try:
+            # Should handle exception gracefully and return empty dict
+            env_vars = cron_runner._get_env_vars()
+            assert isinstance(env_vars, dict)
+            assert len(env_vars) == 0
+        finally:
+            # Clean up
+            import shutil
+            shutil.rmtree(env_file)
+
+    async def test_execute_job_single_attempt_with_job_result(self, cron_runner):
+        """Test job execution with existing job result (retry scenario)."""
+        command = ["echo", "retry"]
+        job_name = "retry_job"
+
+        mock_process = AsyncMock()
+        mock_process.communicate.return_value = (b"retry output", b"")
+        mock_process.returncode = 0
+        mock_process.wait = AsyncMock()
+
+        with patch('app.cron_runner.asyncio.create_subprocess_exec', return_value=mock_process), \
+             patch.object(cron_runner.job_tracker, 'start_job') as mock_start_job, \
+             patch.object(cron_runner.job_tracker, 'update_job') as mock_update_job:
+
+            # Create a mock job result
+            mock_job_result = Mock()
+            mock_job_result.job_name = job_name
+            mock_job_result.max_retries = 1
+            mock_job_result.logs = []
+
+            await cron_runner._execute_job_single_attempt(
+                command,
+                job_result=mock_job_result
+            )
+
+            # Verify start_job was NOT called (we're using existing job result)
+            mock_start_job.assert_not_called()
+            mock_update_job.assert_called_once()
+
+    async def test_execute_job_single_attempt_no_job_info(self, cron_runner):
+        """Test job execution without any job information (should raise ValueError)."""
+        command = ["echo", "no info"]
+
+        with pytest.raises(ValueError, match="Either job_result, rule, or job_name must be provided"):
+            await cron_runner._execute_job_single_attempt(command)
+
+    async def test_execute_job_single_attempt_with_attempt_info(self, cron_runner):
+        """Test job execution with attempt info (retry scenario)."""
+        command = ["echo", "attempt"]
+        job_name = "attempt_job"
+
+        mock_process = AsyncMock()
+        mock_process.communicate.return_value = (b"success", b"")
+        mock_process.returncode = 0
+        mock_process.wait = AsyncMock()
+
+        with patch('app.cron_runner.asyncio.create_subprocess_exec', return_value=mock_process), \
+             patch.object(cron_runner.job_tracker, 'start_job') as mock_start_job, \
+             patch.object(cron_runner.job_tracker, 'update_job') as mock_update_job:
+
+            mock_job_result = Mock()
+            mock_job_result.job_name = job_name
+            mock_job_result.max_retries = 3
+            mock_job_result.logs = []
+            mock_start_job.return_value = mock_job_result
+
+            await cron_runner._execute_job_single_attempt(
+                command,
+                attempt_info="Attempt 2/4",
+                job_name=job_name
+            )
+
+            # Verify attempt info was logged
+            assert len(mock_job_result.logs) > 0
+            assert "=== Attempt 2/4 ===" in '\n'.join(mock_job_result.logs)
+
     @pytest.mark.asyncio
     async def test_execute_job_from_rule_no_commands(self, cron_runner):
         """Test executing job with no commands."""
@@ -622,6 +764,120 @@ class TestGlobalCronRunner:
         # Should not raise or execute anything - but method calls async internally
         # For testing, we'll just call it (it should not execute anything)
         await cron_runner._execute_job_from_rule(mock_rule)
+
+    @pytest.mark.asyncio
+    async def test_execute_job_from_rule_with_commands(self, cron_runner):
+        """Test executing job from rule with commands (calls _execute_job_with_retries)."""
+        mock_rule = Mock()
+        mock_rule.name = "test_job"
+        mock_rule.commands = [["echo", "test"]]
+        mock_rule.env = {}
+
+        with patch.object(cron_runner, '_execute_job_with_retries', new_callable=AsyncMock) as mock_execute:
+            await cron_runner._execute_job_from_rule(mock_rule)
+            mock_execute.assert_called_once_with(
+                rule=mock_rule,
+                max_retries=3,
+                timeout=600
+            )
+
+    async def test_execute_job_with_retries_no_commands(self, cron_runner):
+        """Test execute job with retries when rule has no commands."""
+        mock_rule = Mock()
+        mock_rule.name = "empty_job"
+        mock_rule.commands = []
+
+        # Should not raise or execute anything
+        await cron_runner._execute_job_with_retries(mock_rule)
+
+    async def test_execute_job_single_attempt_with_rule(self, cron_runner):
+        """Test executing job with dispatch rule (creates new job result)."""
+        command = ["echo", "rule_test"]
+        job_name = "rule_job"
+
+        mock_process = AsyncMock()
+        mock_process.communicate.return_value = (b"success", b"")
+        mock_process.returncode = 0
+        mock_process.wait = AsyncMock()
+
+        mock_rule = Mock()
+        mock_rule.name = job_name
+        mock_rule.commands = [command]
+        mock_rule.env = {}  # Add valid env attribute
+
+        with patch('app.cron_runner.asyncio.create_subprocess_exec', return_value=mock_process), \
+             patch.object(cron_runner.job_tracker, 'start_job') as mock_start_job, \
+             patch.object(cron_runner.job_tracker, 'update_job') as mock_update_job:
+
+            mock_job_result = Mock()
+            mock_start_job.return_value = mock_job_result
+
+            await cron_runner._execute_job_single_attempt(
+                command,
+                rule=mock_rule
+            )
+
+            # Verify start_job was called
+            mock_start_job.assert_called_once_with(job_name, 0)
+            mock_update_job.assert_called_once()
+
+    async def test_execute_job_single_attempt_timeout_single_attempt(self, cron_runner):
+        """Test timeout handling for single attempt (no retries)."""
+        command = ["slow", "command"]
+        job_name = "timeout_no_retry"
+
+        mock_process = AsyncMock()
+        mock_process.kill = AsyncMock()
+        mock_process.wait = AsyncMock()
+
+        with patch('app.cron_runner.asyncio.create_subprocess_exec', return_value=mock_process), \
+             patch.object(cron_runner.job_tracker, 'start_job') as mock_start_job, \
+             patch.object(cron_runner.job_tracker, 'update_job') as mock_update_job:
+
+            mock_job_result = Mock()
+            mock_job_result.max_retries = 0  # No retries - single attempt
+            mock_job_result.logs = []
+            mock_start_job.return_value = mock_job_result
+
+            with patch('app.cron_runner.asyncio.wait_for', side_effect=asyncio.TimeoutError):
+                with pytest.raises(Exception, match="timed out"):
+                    await cron_runner._execute_job_single_attempt(
+                        command,
+                        timeout=10,
+                        job_result=mock_job_result
+                    )
+
+                # Verify status was set to failed
+                mock_update_job.assert_called_once()
+                call_kwargs = mock_update_job.call_args[1]
+                assert call_kwargs['status'] == "failed"
+
+    async def test_execute_job_single_attempt_exception_updates_error(self, cron_runner):
+        """Test that exceptions update job error message and status for single attempt."""
+        command = ["failing", "command"]
+        job_name = "exception_job"
+
+        with patch('app.cron_runner.asyncio.create_subprocess_exec', side_effect=Exception("Test exception")), \
+             patch.object(cron_runner.job_tracker, 'start_job') as mock_start_job, \
+             patch.object(cron_runner.job_tracker, 'update_job') as mock_update_job:
+
+            mock_job_result = Mock()
+            mock_job_result.max_retries = 0  # Single attempt
+            mock_job_result.error_message = None
+            mock_job_result.logs = []
+            mock_start_job.return_value = mock_job_result
+
+            with pytest.raises(Exception, match="Test exception"):
+                await cron_runner._execute_job_single_attempt(
+                    command,
+                    job_result=mock_job_result
+                )
+
+            # Verify job error was updated and status set to failed
+            mock_update_job.assert_called_once()
+            call_kwargs = mock_update_job.call_args[1]
+            assert call_kwargs['status'] == "failed"
+            assert "Test exception" in call_kwargs['error_message']
 
     def test_execute_job_from_rule_multiple_commands(self, cron_runner):
         """Test executing job with multiple commands (uses first one)."""
