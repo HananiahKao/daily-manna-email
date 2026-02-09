@@ -2,6 +2,13 @@
 {% block title %}Calendar · Daily Manna Email{% endblock %}
 {% block header_right %}
   <div class="header-actions">
+    <button type="button" id="caffeine-indicator" class="caffeine-icon" aria-label="Caffeine mode">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 200 161.458" fill="currentColor" class="caffeine-svg">
+        <g transform="translate(-15.064 -266.634)">
+          <path d="M22.791,266.634V368.21a26.277,26.277,0,0,0,26.335,26.335H145.06A26.278,26.278,0,0,0,171.4,368.21V352.6c15.908,2.54,32.609-7.022,39.985-22.893,8.585-18.479,1.651-39-15.487-45.836a31.7,31.7,0,0,0-12.3-2.213,35.674,35.674,0,0,0-12.195,2.467V266.635Zm158.876,36.122h0a12.955,12.955,0,0,1,5.025.9c7,2.793,9.833,11.176,6.326,18.725S181,333.791,173.994,331a12.172,12.172,0,0,1-2.6-1.437V307.119a15.513,15.513,0,0,1,10.272-4.363Zm-9.392,105.236-.2,0H25.544a10.052,10.052,0,1,0,0,20.085H172.076a10.052,10.052,0,1,0,.2-20.09Z" transform="translate(0 0)"/>
+        </g>
+      </svg>
+    </button>
     <button type="button" id="dispatch-gear" class="gear-icon" aria-label="Dispatch settings">
       <svg viewBox="0 0 24 24" fill="currentColor" class="gear-svg">
         <path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96c-.5-.38-1.04-.7-1.64-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.6.24-1.14.56-1.64.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.38 1.04.7 1.64.94l.36 2.54a.5.5 0 0 0 .5.42h3.84a.5.5 0 0 0 .5-.42l.36-2.54c.6-.24 1.14-.56 1.64-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2Z"/>
@@ -186,6 +193,39 @@
     </div>
   </div>
 </div>
+<div id="caffeine-overlay" class="caffeine-overlay overlay" hidden>
+  <div class="caffeine-center">
+    <div class="caffeine-header">
+      <div>
+        <h3>Caffeine Mode</h3>
+        <p class="caffeine-header-subtitle">Prevents the server from going to sleep.</p>
+      </div>
+      <button class="caffeine-close" aria-label="Close">×</button>
+    </div>
+    <div class="caffeine-content">
+      <div class="caffeine-info">
+        <p><strong>What is Caffeine Mode?</strong></p>
+        <p>Caffeine mode is a feature that prevents the server from entering sleep mode by periodically pinging itself every 10 minutes. This ensures the application remains responsive and available for scheduled jobs.</p>
+      </div>
+      <div class="caffeine-status-section">
+        <p><strong>Current Status:</strong></p>
+        <div id="caffeine-mode-status" class="caffeine-mode-status">Loading...</div>
+      </div>
+      <div class="caffeine-details">
+        <p><strong>How it works:</strong></p>
+        <ul>
+          <li>The server pings itself every 10 minutes</li>
+          <li>This keeps the server awake and responsive</li>
+          <li>Ensures scheduled jobs run on time</li>
+          <li>Runs in the background without affecting performance</li>
+        </ul>
+      </div>
+      <div class="caffeine-actions">
+        <button id="caffeine-refresh-btn" class="caffeine-refresh-btn" type="button">Check Status</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="dispatch-overlay" class="dispatch-overlay overlay" hidden>
   <div class="dispatch-center">
     <div class="dispatch-header">
@@ -206,6 +246,7 @@
   </div>
 </div>
 <script defer src="/static/dispatch_rules.js"></script>
+<script defer src="/static/caffeine_mode.js"></script>
 <script>
   window.CalendarConfig = {
     schedulePath: "{{ schedule_path }}",

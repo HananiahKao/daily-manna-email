@@ -239,6 +239,9 @@ class JobTracker:
         """
         jobs = list(self._current_jobs.values())
 
+        # Exclude caffeine mode job from API responses
+        jobs = [j for j in jobs if j.job_name != "caffeine_mode"]
+
         if job_name:
             jobs = [j for j in jobs if j.job_name == job_name]
 
