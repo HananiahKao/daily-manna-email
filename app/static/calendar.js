@@ -287,6 +287,7 @@
       this.hideBatchEditOverlay();
       this.hideNotificationOverlay();
       this.hideDispatchOverlay();
+      this.hideCaffeineOverlay();
     }
 
     // Overlay visibility helpers
@@ -301,7 +302,8 @@
         'date-adjust-overlay',
         'batch-edit-overlay',
         'notification-overlay',
-        'dispatch-overlay'
+        'dispatch-overlay',
+        'caffeine-overlay'
       ];
 
       overlayIds.forEach(id => {
@@ -325,6 +327,14 @@
     // Dispatch overlay management
     hideDispatchOverlay() {
       const overlay = document.getElementById('dispatch-overlay');
+      if (overlay) {
+        overlay.hidden = true;
+      }
+    }
+
+    // Caffeine overlay management
+    hideCaffeineOverlay() {
+      const overlay = document.getElementById('caffeine-overlay');
       if (overlay) {
         overlay.hidden = true;
       }
