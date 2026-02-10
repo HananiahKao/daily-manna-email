@@ -71,9 +71,13 @@ DAY_ID_BY_INDEX = {
 
 
 def _decode_html(resp: requests.Response, url: str = "") -> Optional[str]:
+    logger.debug(f"Decoding response for {url}")
     if resp.status_code != 200 or "text/html" not in resp.headers.get("Content-Type", ""):
+        logger.warning(f"Response not HTML or status != 200: Status={resp.status_code}, Content-Type={resp.headers.get('Content-Type')}")
         return None
     data = resp.content or b""
+    logger.debug(f"Response body length: {len(data)} bytes")
+    
     # Prefer robust UTF-8 handling for known host(s)
     try:
         from urllib.parse import urlparse as _urlparse
@@ -81,12 +85,14 @@ def _decode_html(resp: requests.Response, url: str = "") -> Optional[str]:
     except Exception:
         host = ""
     if host.endswith("ezoe.work"):
+        logger.debug("Detected ezoe.work host, forcing UTF-8 decoding")
         try:
             return data.decode("utf-8", errors="replace")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"UTF-8 decoding failed for ezoe.work: {e}")
 
     enc = resp.encoding
+    logger.debug(f"Response encoding from headers: {enc}")
     if not enc:
         try:
             head = data[:2048].decode("ascii", errors="ignore")
@@ -94,21 +100,44 @@ def _decode_html(resp: requests.Response, url: str = "") -> Optional[str]:
             m = _re.search(r"charset=([A-Za-z0-9_\-]+)", head, _re.I)
             if m:
                 enc = m.group(1).strip()
-        except Exception:
+                logger.debug(f"Encoding from meta tag: {enc}")
+        except Exception as e:
+            logger.debug(f"Failed to detect encoding from meta tag: {e}")
             enc = None
     if not enc:
+        logger.debug("Fallback to UTF-8 encoding")
         enc = "utf-8"
     try:
-        return data.decode(enc, errors="replace")
-    except LookupError:
+        decoded = data.decode(enc, errors="replace")
+        logger.debug(f"Successfully decoded with {enc}")
+        return decoded
+    except LookupError as e:
+        logger.error(f"Encoding {enc} not recognized, falling back to UTF-8: {e}")
         return data.decode("utf-8", errors="replace")
 
 
 def _fetch(url: str) -> Optional[str]:
     try:
         resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+        logger.debug(f"Fetching {url} - Status: {resp.status_code}")
+        logger.debug(f"Headers: {dict(resp.headers)}")
+        logger.debug(f"Content length: {len(resp.content)} bytes")
+        
+        content_type = resp.headers.get("Content-Type", "")
+        if "application/json" in content_type:
+            try:
+                json_data = resp.json()
+                logger.debug(f"JSON response: {json_data}")
+            except Exception as e:
+                logger.debug(f"Failed to parse JSON: {e}")
+        
+        if resp.content:
+            preview = resp.content.decode("utf-8", errors="replace")[:200]
+            logger.debug(f"Content preview (first 200 chars): {repr(preview)}")
+        
         return _decode_html(resp, url)
-    except requests.RequestException:
+    except requests.RequestException as e:
+        logger.error(f"Request failed for {url}: {e}")
         return None
     finally:
         # Polite pacing between requests
@@ -118,7 +147,6 @@ def _fetch(url: str) -> Optional[str]:
                 _time.sleep(POLITE_DELAY_MS / 1000.0)
         except Exception:
             pass
-
 
 def _lesson_url(base: str, volume: int, lesson: int) -> str:
     # Book id root is fixed to 2264 in the provided link, with pattern 2264-<volume>-<lesson>.html
