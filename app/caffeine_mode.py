@@ -89,8 +89,8 @@ async def start_caffeine_mode() -> None:
         logger.info("Caffeine mode is disabled via CAFFEINE_MODE environment variable")
         return
 
-    logger.info("Starting caffeine mode - pinging every 10 minutes")
+    logger.info(f"Starting caffeine mode - pinging every {config.caffeine_interval} seconds")
 
     while True:
         await caffeine_ping()
-        await asyncio.sleep(PING_INTERVAL)
+        await asyncio.sleep(config.caffeine_interval)
