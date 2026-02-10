@@ -257,24 +257,40 @@ class CronJobRunner:
                 preexec_fn=os.setsid if hasattr(os, 'setsid') else None
             )
 
+            # Helper function to read stream line by line
+            async def read_stream(stream, is_stdout: bool, stdout_buffer: list, stderr_buffer: list):
+                nonlocal job_result
+                while True:
+                    line = await stream.readline()
+                    if not line:
+                        break
+                    decoded_line = line.decode('utf-8', errors='replace').rstrip('\n')
+                    if decoded_line:
+                        job_result.logs.append(decoded_line)
+                        if is_stdout:
+                            stdout_buffer.append(decoded_line)
+                        else:
+                            stderr_buffer.append(decoded_line)
+
+            stdout_buffer = []
+            stderr_buffer = []
+
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
+                # Read both streams concurrently
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        read_stream(process.stdout, True, stdout_buffer, stderr_buffer),
+                        read_stream(process.stderr, False, stdout_buffer, stderr_buffer)
+                    ),
                     timeout=timeout
                 )
+                await process.wait()
 
                 exit_code = process.returncode
-                stdout_text = stdout.decode('utf-8', errors='replace').strip()
-                stderr_text = stderr.decode('utf-8', errors='replace').strip()
+                complete_stdout = '\n'.join(stdout_buffer)
 
-                # Store logs
-                if stdout_text:
-                    job_result.logs.extend(stdout_text.split('\n'))
-                if stderr_text:
-                    job_result.logs.extend(stderr_text.split('\n'))
-
-                # Try to parse JSON output from stdout
-                json_output = self._extract_json_output(stdout_text)
+                # Try to parse JSON output from complete stdout
+                json_output = self._extract_json_output(complete_stdout)
 
                 # Update job result
                 if exit_code == 0:
@@ -288,8 +304,8 @@ class CronJobRunner:
                         metadata={
                             "command": command,
                             "timeout": timeout,
-                            "stdout_length": len(stdout_text),
-                            "stderr_length": len(stderr_text)
+                            "stdout_length": len(complete_stdout),
+                            "stderr_length": len(stderr_buffer)
                         }
                     )
                 else:
@@ -304,8 +320,8 @@ class CronJobRunner:
                         "metadata": {
                             "command": command,
                             "timeout": timeout,
-                            "stdout_length": len(stdout_text),
-                            "stderr_length": len(stderr_text)
+                            "stdout_length": len(complete_stdout),
+                            "stderr_length": len(stderr_buffer)
                         }
                     }
                     if job_result.max_retries == 0:

@@ -294,7 +294,8 @@ class TestCronJobRunner:
 
         # Mock subprocess
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"success output", b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[b"success output", b""])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
@@ -343,7 +344,8 @@ class TestCronJobRunner:
 
         # Mock subprocess with failure
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"", b"error message")
+        mock_process.stdout.readline = AsyncMock(return_value=b"")
+        mock_process.stderr.readline = AsyncMock(side_effect=[b"error message", b""])
         mock_process.returncode = 1
         mock_process.wait = AsyncMock()
 
@@ -553,7 +555,12 @@ class TestGlobalCronRunner:
 
         # Mock subprocess with JSON output
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b'Output:\n{"result": "success"}\n', b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[
+            b"Output:",
+            b'{"result": "success"}',
+            b""
+        ])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
@@ -619,7 +626,8 @@ class TestGlobalCronRunner:
 
         # Mock subprocess
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"", b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[b"", b""])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
@@ -694,7 +702,8 @@ class TestGlobalCronRunner:
         job_name = "retry_job"
 
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"retry output", b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[b"retry output", b""])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
@@ -730,7 +739,8 @@ class TestGlobalCronRunner:
         job_name = "attempt_job"
 
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"success", b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[b"success", b""])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
@@ -796,7 +806,8 @@ class TestGlobalCronRunner:
         job_name = "rule_job"
 
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"success", b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[b"success", b""])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 

@@ -121,7 +121,8 @@ class TestMultipleJobsDueAtSameTime:
                 nonlocal execution_count
                 execution_count += 1
                 mock_process = AsyncMock()
-                mock_process.communicate.return_value = (b"", b"")
+                mock_process.stdout.readline = AsyncMock(side_effect=[b"", b""])
+                mock_process.stderr.readline = AsyncMock(return_value=b"")
                 mock_process.returncode = 0
                 mock_process.wait = AsyncMock()
                 return mock_process
@@ -184,19 +185,20 @@ class TestMultipleJobsDueAtSameTime:
              patch('app.cron_runner.asyncio.sleep', return_value=None):  # Patch asyncio.sleep to prevent hanging
 
             # Mock subprocess calls: job1 succeeds, job2 fails (with retries), job3 succeeds
+            # Note: The actual number of calls depends on parallel execution timing
             mock_create.side_effect = [
-                # job1_success
+                # job1_success - attempt 1 (success)
                 self._create_success_mock(),
                 # job2_fail - attempt 1 (fail)
                 self._create_failure_mock(),
+                # job3_success - attempt 1 (success)
+                self._create_success_mock(),
                 # job2_fail - attempt 2 (fail)
                 self._create_failure_mock(),
                 # job2_fail - attempt 3 (fail)
                 self._create_failure_mock(),
                 # job2_fail - attempt 4 (fail)
                 self._create_failure_mock(),
-                # job3_success - attempt 1 (success)
-                self._create_success_mock()
             ]
 
             await runner._run_dispatcher_trigger()
@@ -319,10 +321,12 @@ class TestMultipleJobsDueAtSameTime:
                 mock_process = AsyncMock()
                 # First call fails, second succeeds
                 if len(retry_attempts) == 1 or len(retry_attempts) == 3:
-                    mock_process.communicate.return_value = (b"", b"fail")
+                    mock_process.stdout.readline = AsyncMock(return_value=b"")
+                    mock_process.stderr.readline = AsyncMock(side_effect=[b"fail", b""])
                     mock_process.returncode = 1
                 else:
-                    mock_process.communicate.return_value = (b"success", b"")
+                    mock_process.stdout.readline = AsyncMock(side_effect=[b"success", b""])
+                    mock_process.stderr.readline = AsyncMock(return_value=b"")
                     mock_process.returncode = 0
                 mock_process.wait = AsyncMock()
                 return mock_process
@@ -340,17 +344,19 @@ class TestMultipleJobsDueAtSameTime:
             assert retry_attempts[3] == "echo"  # job2 attempt 2
 
     def _create_success_mock(self):
-        """Helper to create a successful subprocess mock."""
+        """Create a mock process for successful execution."""
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"success output", b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[b"success", b""])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
         return mock_process
 
     def _create_failure_mock(self):
-        """Helper to create a failing subprocess mock."""
+        """Create a mock process for failed execution."""
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"", b"error message")
+        mock_process.stdout.readline = AsyncMock(return_value=b"")
+        mock_process.stderr.readline = AsyncMock(side_effect=[b"fail", b""])
         mock_process.returncode = 1
         mock_process.wait = AsyncMock()
         return mock_process

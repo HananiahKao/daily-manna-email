@@ -86,7 +86,8 @@ class TestCronRunnerJobTrackerIntegration:
 
         # Mock subprocess for successful execution
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"success output", b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[b"success output", b""])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
@@ -117,7 +118,8 @@ class TestCronRunnerJobTrackerIntegration:
 
         # Mock subprocess for failed execution
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"", b"error message")
+        mock_process.stdout.readline = AsyncMock(return_value=b"")
+        mock_process.stderr.readline = AsyncMock(side_effect=[b"error message", b""])
         mock_process.returncode = 1
         mock_process.wait = AsyncMock()
 
@@ -150,12 +152,14 @@ class TestCronRunnerJobTrackerIntegration:
 
         # Mock subprocess - first call fails, second succeeds
         mock_process_fail = AsyncMock()
-        mock_process_fail.communicate.return_value = (b"", b"fail")
+        mock_process_fail.stdout.readline = AsyncMock(return_value=b"")
+        mock_process_fail.stderr.readline = AsyncMock(side_effect=[b"fail", b""])
         mock_process_fail.returncode = 1
         mock_process_fail.wait = AsyncMock()
 
         mock_process_success = AsyncMock()
-        mock_process_success.communicate.return_value = (b"success", b"")
+        mock_process_success.stdout.readline = AsyncMock(side_effect=[b"success", b""])
+        mock_process_success.stderr.readline = AsyncMock(return_value=b"")
         mock_process_success.returncode = 0
         mock_process_success.wait = AsyncMock()
 
@@ -218,7 +222,8 @@ class TestCronRunnerJobTrackerIntegration:
 
         # Mock successful execution
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"test output", b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[b"test output", b""])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
@@ -253,7 +258,8 @@ class TestCronRunnerJobTrackerIntegration:
 
         # Mock successful execution
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"manual output", b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[b"manual output", b""])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
@@ -292,7 +298,13 @@ class TestCronRunnerJobTrackerIntegration:
         # Mock subprocess with JSON output
         json_output = '{"result": "integration_test", "status": "ok"}'
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (f'Command output\n{json_output}\nMore output'.encode(), b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[
+            b"Command output",
+            json_output.encode(),
+            b"More output",
+            b""
+        ])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
@@ -317,7 +329,8 @@ class TestCronRunnerJobTrackerIntegration:
         runner = cron_runner_with_tracker
 
         mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"env test", b"")
+        mock_process.stdout.readline = AsyncMock(side_effect=[b"env test", b""])
+        mock_process.stderr.readline = AsyncMock(return_value=b"")
         mock_process.returncode = 0
         mock_process.wait = AsyncMock()
 
