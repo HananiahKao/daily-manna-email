@@ -223,18 +223,24 @@ HEADERS = {
 }
 HTTP_RETRIES = int(os.getenv("HTTP_RETRIES", "3"))
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-)
-logger = logging.getLogger("sjzl-daily")
-
-
 def _debug_enabled() -> bool:
     return (
         os.getenv("DEBUG_EMAIL") not in (None, "", "0", "false", "False") or
         os.getenv("DEBUG_MODE") not in (None, "", "0", "false", "False")
     )
+
+
+# Set logging level based on debug mode
+debug_level = logging.DEBUG if _debug_enabled() else logging.INFO
+logging.basicConfig(
+    level=debug_level,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+logger = logging.getLogger("sjzl-daily")
+
+# Also ensure ezoe_week_scraper logger inherits the debug level
+ezoe_logger = logging.getLogger("ezoe_week_scraper")
+ezoe_logger.setLevel(debug_level)
 
 
 def _debug_preview(label: str, text: str) -> None:
