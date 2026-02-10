@@ -34,9 +34,9 @@
       
       const panelWidth = center.offsetWidth;
       
-      // Position under indicator
+      // Position under indicator, aligned to right edge (consistent with other overlays)
       caffeineOverlay.style.top = (indicatorRect.bottom + 8) + 'px';
-      caffeineOverlay.style.left = (indicatorRect.left + indicatorRect.width / 2 - panelWidth / 2) + 'px';
+      caffeineOverlay.style.left = (indicatorRect.right - panelWidth) + 'px';
     }
   }
 
