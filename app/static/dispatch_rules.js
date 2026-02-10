@@ -15,11 +15,34 @@
 
   const REFRESH_INTERVAL_MS = 30000;
   let refreshTimer = null;
+  let isDirty = false; // Track if any form is dirty
 
   const weekdayLabels = ["M", "T", "W", "T", "F", "S", "S"];
   const weekdayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   let feedbackTimeout = null;
+
+  const startPolling = () => {
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+    }
+    refreshTimer = setInterval(() => {
+      if (!overlayEl.hidden && !isDirty) {
+        loadRules();
+      }
+    }, REFRESH_INTERVAL_MS);
+  };
+
+  const stopPolling = () => {
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
+    }
+  };
+
+  const setDirtyState = (dirty) => {
+    isDirty = dirty;
+  };
 
   const setFeedback = (type, message) => {
     if (!feedbackEl) {
@@ -229,9 +252,13 @@
         // Check if days are dirty - use JSON.stringify to compare sorted arrays
         const daysDirty = JSON.stringify([...selectedDays].sort()) !== JSON.stringify([...rule.weekdays].sort());
         
-        const isDirty = timeDirty || daysDirty;
-        saveBtn.disabled = !isDirty;
-        card.classList.toggle("is-dirty", isDirty);
+        const cardIsDirty = timeDirty || daysDirty;
+        saveBtn.disabled = !cardIsDirty;
+        card.classList.toggle("is-dirty", cardIsDirty);
+        
+        // Check if any card is dirty to set overall state
+        const anyDirty = document.querySelector('.dispatch-rule-card.is-dirty') !== null;
+        setDirtyState(anyDirty);
       };
 
       timeInput.addEventListener("input", updateSaveState);
@@ -277,13 +304,14 @@
           rule.time = updated.time || newTime;
           rule.weekdays = updated.days || newDays;
           timeInput.value = rule.time;
+          selectedDays.splice(0, selectedDays.length, ...rule.weekdays); // Update local selectedDays to match server response
           setFeedback("success", `${formatJobName(rule.name)} updated.`);
           updateSaveState();
         } catch (error) {
           setFeedback("error", error.message || "Failed to update dispatch rule.");
         } finally {
           saveBtn.textContent = "Save";
-          updateSaveState();
+          // Do NOT call updateSaveState() here - keep button disabled until user makes further changes
         }
       });
 
@@ -320,24 +348,6 @@
     const panelWidth = center.offsetWidth;
     overlayEl.style.top = `${rect.bottom + 4}px`;
     overlayEl.style.left = `${rect.right - panelWidth}px`;
-  };
-
-  const startPolling = () => {
-    if (refreshTimer) {
-      clearInterval(refreshTimer);
-    }
-    refreshTimer = setInterval(() => {
-      if (!overlayEl.hidden) {
-        loadRules();
-      }
-    }, REFRESH_INTERVAL_MS);
-  };
-
-  const stopPolling = () => {
-    if (refreshTimer) {
-      clearInterval(refreshTimer);
-      refreshTimer = null;
-    }
   };
 
   const openOverlay = () => {
