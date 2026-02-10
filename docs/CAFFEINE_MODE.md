@@ -34,6 +34,16 @@ By default, caffeine mode will ping:
 
 You can customize this behavior with the following environment variables:
 
+#### CAFFEINE_INTERVAL
+
+Specifies the ping interval in seconds. The minimum allowed interval is 60 seconds (1 minute) to prevent abuse. The default interval is 600 seconds (10 minutes).
+
+```bash
+CAFFEINE_INTERVAL=300  # 5 minutes
+CAFFEINE_INTERVAL=1800  # 30 minutes
+CAFFEINE_INTERVAL=3600  # 1 hour
+```
+
 #### CAFFEINE_DOMAIN
 
 Specifies the domain or IP address to ping. This is useful if your application is running on a custom domain or specific IP.
@@ -75,13 +85,14 @@ PORT=8080
 
 **Endpoint:** `GET /api/caffeine-status`
 
-**Description:** Returns the current status of caffeine mode (whether it's enabled or disabled).
+**Description:** Returns the current status of caffeine mode (whether it's enabled or disabled) along with the ping interval.
 
 **Response:**
 ```json
 {
   "enabled": true,
-  "message": "Caffeine mode is active"
+  "message": "Caffeine mode is active",
+  "interval": 600
 }
 ```
 
