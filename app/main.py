@@ -208,7 +208,8 @@ def create_app() -> FastAPI:
         """Get caffeine mode status."""
         return JSONResponse({
             "enabled": settings.caffeine_mode,
-            "message": "Caffeine mode is active" if settings.caffeine_mode else "Caffeine mode is inactive"
+            "message": "Caffeine mode is active" if settings.caffeine_mode else "Caffeine mode is inactive",
+            "interval": settings.caffeine_interval
         })
 
     @app.get("/privacy-policy", response_class=HTMLResponse)

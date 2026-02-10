@@ -117,6 +117,22 @@
         }
       }
       
+      // Update interval display
+      const intervalText = document.getElementById('caffeine-interval-text');
+      const descriptionText = document.getElementById('caffeine-description');
+      if (data.interval !== undefined) {
+        const minutes = Math.floor(data.interval / 60);
+        const intervalStr = `${minutes} minute${minutes > 1 ? 's' : ''}`;
+        
+        if (intervalText) {
+          intervalText.textContent = `The server pings itself every ${intervalStr}`;
+        }
+        
+        if (descriptionText) {
+          descriptionText.textContent = `Caffeine mode is a feature that prevents the server from entering sleep mode by periodically pinging itself every ${intervalStr}. This ensures the application remains responsive and available for scheduled jobs.`;
+        }
+      }
+      
       return data;
     } catch (error) {
       console.error('Error checking caffeine mode status:', error);
