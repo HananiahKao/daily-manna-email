@@ -160,7 +160,14 @@ def load_rules(config_path: Path) -> List[DispatchRule]:
     for item in raw_config:
         name = item["name"]
         time_str = item["time"]
-        days = item.get("days") or item.get("weekdays") or ["daily"]
+        # Only default to ["daily"] if days/weekdays are not explicitly provided (None)
+        # Preserve empty list if explicitly specified
+        if "days" in item:
+            days = item["days"]
+        elif "weekdays" in item:
+            days = item["weekdays"]
+        else:
+            days = ["daily"]
         commands = item.get("commands") or []
         if not commands:
             raise ValueError(f"Rule {name} missing commands")
