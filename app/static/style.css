@@ -1458,10 +1458,17 @@ kbd {
   font-size: 1.1rem;
 }
 
+.notification-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.notification-refresh,
 .notification-close {
   background: none;
   border: none;
-  font-size: 1.5rem;
+  font-size: 1.1rem;
   cursor: pointer;
   color: #6b7280;
   padding: 0;
@@ -1474,8 +1481,13 @@ kbd {
   transition: background 0.2s ease;
 }
 
+.notification-refresh:hover,
 .notification-close:hover {
   background: #f3f4f6;
+}
+
+.notification-close {
+  font-size: 1.5rem;
 }
 
 .notification-filters {

@@ -160,7 +160,10 @@
   <div class="notification-center">
     <div class="notification-header">
       <h3>Notifications</h3>
-      <button class="notification-close" aria-label="Close">×</button>
+      <div class="notification-header-actions">
+        <button type="button" class="notification-refresh" aria-label="Refresh notifications">↻</button>
+        <button class="notification-close" aria-label="Close">×</button>
+      </div>
     </div>
     <div class="notification-filters">
       <button class="filter-btn active" data-filter="all">All</button>
@@ -285,6 +288,28 @@
     isLoading: false
   };
 
+  const NOTIFICATION_REFRESH_INTERVAL_MS = 30000;
+  let notificationRefreshTimer = null;
+
+  const startNotificationPolling = () => {
+    if (notificationRefreshTimer) {
+      clearInterval(notificationRefreshTimer);
+    }
+    notificationRefreshTimer = setInterval(() => {
+      const overlay = document.getElementById('notification-overlay');
+      if (!overlay.hidden) {
+        loadNotifications();
+      }
+    }, NOTIFICATION_REFRESH_INTERVAL_MS);
+  };
+
+  const stopNotificationPolling = () => {
+    if (notificationRefreshTimer) {
+      clearInterval(notificationRefreshTimer);
+      notificationRefreshTimer = null;
+    }
+  };
+
   // Check OAuth status when page loads
   document.addEventListener('DOMContentLoaded', function() {
     checkOAuthStatus();
@@ -295,6 +320,14 @@
 
     // Close overlay
     document.querySelector('.notification-close').addEventListener('click', hideNotificationOverlay);
+
+    // Refresh button
+    const refreshBtn = document.querySelector('.notification-refresh');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', function() {
+        loadNotifications();
+      });
+    }
 
     // Click outside to close
     document.addEventListener('click', function(e) {
@@ -361,13 +394,17 @@
     const overlay = document.getElementById('notification-overlay');
     if (overlay.hidden) {
       showNotificationOverlay();
+      loadNotifications();
+      startNotificationPolling();
     } else {
       hideNotificationOverlay();
+      stopNotificationPolling();
     }
   }
 
   function hideNotificationOverlay() {
     document.getElementById('notification-overlay').hidden = true;
+    stopNotificationPolling();
   }
 
   // Expose hide function for centralized overlay management
