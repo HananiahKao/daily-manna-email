@@ -24,14 +24,22 @@ def require_user(request: Request) -> str:
 
     # Fallback to HTTP Basic for API compatibility
     try:
-        import asyncio
-        credentials = asyncio.run(HTTPBasic()(request))
-        if credentials:
-            settings = get_config()
-            valid_user = secrets.compare_digest(credentials.username or "", settings.admin_user)
-            valid_password = secrets.compare_digest(credentials.password or "", settings.admin_password)
-            if valid_user and valid_password:
-                return settings.admin_user
+        # Extract credentials from Authorization header manually
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Basic "):
+            import base64
+            # Decode base64 credentials
+            try:
+                credentials = base64.b64decode(auth_header[len("Basic "):]).decode("utf-8")
+                username, password = credentials.split(":", 1)
+            except:
+                pass
+            else:
+                settings = get_config()
+                valid_user = secrets.compare_digest(username or "", settings.admin_user)
+                valid_password = secrets.compare_digest(password or "", settings.admin_password)
+                if valid_user and valid_password:
+                    return settings.admin_user
     except:
         pass
 
