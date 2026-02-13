@@ -1,0 +1,8 @@
+# CODEOWNERS file for daily-manna-email repository
+# Specifies individuals or teams that are responsible for code in this repository
+
+# The following line specifies that tallfat is the code owner for all files in the repository
+*       @tallfat
+
+# tallfat is the code owner and will review all work for this project
+# He is Hananiah's dad and serves as the primary reviewer for all changes
