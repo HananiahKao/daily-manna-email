@@ -10,6 +10,7 @@ import pytest
 from content_source import ContentSource
 from ezoe_content_source import EzoeContentSource
 from wix_content_source import WixContentSource
+from stmn1_content_source import Stmn1ContentSource
 
 
 class TestContentSourceABC:
@@ -25,10 +26,16 @@ class TestContentSourceABC:
         """FIXME: Returns a WixContentSource instance."""
         return WixContentSource()
 
+    @pytest.fixture
+    def stmn1_source(self):
+        """Returns a Stmn1ContentSource instance."""
+        return Stmn1ContentSource()
+
     @pytest.mark.parametrize("source_factory", [
         lambda: EzoeContentSource(),
         lambda: WixContentSource(),
-    ], ids=["ezoe", "wix"])
+        lambda: Stmn1ContentSource(),
+    ], ids=["ezoe", "wix", "stmn1"])
     def test_content_source_implements_abc(self, source_factory):
         """Test that implementations properly implement the ContentSource ABC."""
         source = source_factory()
@@ -50,7 +57,8 @@ class TestContentSourceABC:
     @pytest.mark.parametrize("source_factory,default_selector", [
         (lambda: EzoeContentSource(), "2-1-1"),
         (lambda: WixContentSource(), "【週一】"),
-    ], ids=["ezoe", "wix"])
+        (lambda: Stmn1ContentSource(), "1-1-1"),
+    ], ids=["ezoe", "wix", "stmn1"])
     def test_default_selector(self, source_factory, default_selector):
         """Test get_default_selector returns expected value."""
         source = source_factory()
@@ -59,7 +67,8 @@ class TestContentSourceABC:
     @pytest.mark.parametrize("source_factory,expected_name", [
         (lambda: EzoeContentSource(), "ezoe"),
         (lambda: WixContentSource(), "wix"),
-    ], ids=["ezoe", "wix"])
+        (lambda: Stmn1ContentSource(), "stmn1"),
+    ], ids=["ezoe", "wix", "stmn1"])
     def test_source_name(self, source_factory, expected_name):
         """Test get_source_name returns expected identifier."""
         source = source_factory()
@@ -68,7 +77,8 @@ class TestContentSourceABC:
     @pytest.mark.parametrize("source_factory,expected_type", [
         (lambda: EzoeContentSource(), "volume-lesson-day"),
         (lambda: WixContentSource(), "chinese-weekday"),
-    ], ids=["ezoe", "wix"])
+        (lambda: Stmn1ContentSource(), "volume-lesson-day"),
+    ], ids=["ezoe", "wix", "stmn1"])
     def test_selector_type(self, source_factory, expected_type):
         """Test get_selector_type returns expected type."""
         source = source_factory()
@@ -239,10 +249,92 @@ class TestContentSourceABC:
         result = source.parse_batch_selectors(input_text)
         assert result == []
 
+    def test_stmn1_selector_parsing(self, stmn1_source):
+        """Test Stmn1ContentSource selector parsing and formatting."""
+        # Valid selectors
+        test_cases = [
+            ("1-1-1", (1, 1, 1)),
+            ("1-18-7", (1, 18, 7)),
+            ("2-5-3", (2, 5, 3)),
+            ("15-18-7", (15, 18, 7)),
+        ]
+
+        for selector_str, expected_parsed in test_cases:
+            parsed = stmn1_source.parse_selector(selector_str)
+            assert parsed == expected_parsed
+
+            formatted = stmn1_source.format_selector(parsed)
+            assert formatted == selector_str
+
+            assert stmn1_source.validate_selector(selector_str) is True
+
+    def test_stmn1_selector_advancement(self, stmn1_source):
+        """Test advance_selector and previous_selector for Stmn1ContentSource."""
+        # Normal advancement within lesson
+        assert stmn1_source.advance_selector("1-1-1") == "1-1-2"
+        assert stmn1_source.advance_selector("1-1-6") == "1-1-7"
+
+        # Advancement to next lesson
+        assert stmn1_source.advance_selector("1-1-7") == "1-2-1"
+        assert stmn1_source.advance_selector("1-18-7") == "1-19-1"
+
+        # Previous selector
+        assert stmn1_source.previous_selector("1-1-2") == "1-1-1"
+        assert stmn1_source.previous_selector("1-1-1") == "1-1-7"
+        assert stmn1_source.previous_selector("1-2-1") == "1-1-7"
+
+    def test_stmn1_supports_range_syntax(self, stmn1_source):
+        """Test supports_range_syntax returns True for Stmn1ContentSource."""
+        assert stmn1_source.supports_range_syntax() is True
+
+    def test_stmn1_batch_ui_config(self, stmn1_source):
+        """Test get_batch_ui_config returns correct configuration for Stmn1ContentSource."""
+        expected_config = {
+            "supports_range": True,
+            "range_example": "1-1-1 to 1-1-7",
+            "placeholder": "e.g., 1-1-1 to 1-1-7 or 1-1-1, 1-1-2, 1-1-3"
+        }
+        
+        config = stmn1_source.get_batch_ui_config()
+        
+        for key, expected_value in expected_config.items():
+            assert key in config, f"Missing key: {key}"
+            assert config[key] == expected_value, f"Value mismatch for {key}"
+
+    def test_stmn1_parse_batch_selectors_comma_separated(self, stmn1_source):
+        """Test parse_batch_selectors with comma-separated input for Stmn1."""
+        input_text = "1-1-1, 1-1-2 ,1-1-3"
+        result = stmn1_source.parse_batch_selectors(input_text)
+        expected = ["1-1-1", "1-1-2", "1-1-3"]
+        assert result == expected
+
+    def test_stmn1_parse_batch_selectors_range(self, stmn1_source):
+        """Test parse_batch_selectors with range syntax for Stmn1."""
+        input_text = "1-1-1 to 1-1-3"
+        result = stmn1_source.parse_batch_selectors(input_text)
+        expected = ["1-1-1", "1-1-2", "1-1-3"]
+        assert result == expected
+
+        # Test invalid range (different volume/lesson)
+        with pytest.raises(ValueError, match="Range must be within same volume and lesson"):
+            stmn1_source.parse_batch_selectors("1-1-1 to 1-2-1")
+
+    def test_stmn1_parse_batch_selectors_empty_input(self, stmn1_source):
+        """Test parse_batch_selectors handles empty/whitespace input for Stmn1."""
+        assert stmn1_source.parse_batch_selectors("") == []
+        assert stmn1_source.parse_batch_selectors("   ") == []
+        assert stmn1_source.parse_batch_selectors("\n\n") == []
+
+    def test_stmn1_parse_batch_selectors_invalid_selectors(self, stmn1_source):
+        """Test parse_batch_selectors raises ValueError for invalid selectors."""
+        with pytest.raises(ValueError, match="Invalid stmn1 selector"):
+            stmn1_source.parse_batch_selectors("1-1-1, invalid, 1-1-3")
+
     @pytest.mark.parametrize("source_factory,invalid_input,expected_error", [
         (lambda: EzoeContentSource(), "2-1-1, invalid, 2-1-3", "Invalid Ezoe selector"),
         (lambda: WixContentSource(), "【週一】, invalid, 【週三】", "Invalid Wix selector"),
-    ], ids=["ezoe_invalid", "wix_invalid"])
+        (lambda: Stmn1ContentSource(), "1-1-1, invalid, 1-1-3", "Invalid stmn1 selector"),
+    ], ids=["ezoe_invalid", "wix_invalid", "stmn1_invalid"])
     def test_parse_batch_selectors_invalid_selectors(self, source_factory, invalid_input, expected_error):
         """Test parse_batch_selectors raises ValueError for invalid selectors."""
         source = source_factory()

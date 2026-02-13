@@ -61,17 +61,21 @@ def _load_credentials_from_file():
             return None
 
         # Try encrypted format first if encryption is available
-        if ENCRYPTION_AVAILABLE and is_encrypted_data and is_encrypted_data(content):
+        if ENCRYPTION_AVAILABLE and is_encrypted_data is not None and decrypt_token_data is not None and is_encrypted_data(content):
             try:
                 decrypted_data = decrypt_token_data(content)
-                return Credentials.from_authorized_user_info(decrypted_data, SCOPES)
+                return Credentials.from_authorized_user_info(decrypted_data)
             except TokenEncryptionError as e:
                 logger.warning(f"Failed to decrypt token data: {e}. Trying unencrypted format.")
-                # Fall back to unencrypted
-                return Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+                # Fall back to unencrypted - load JSON and use from_authorized_user_info
+                with open(TOKEN_FILE, 'r', encoding='utf-8') as f:
+                    token_data = json.load(f)
+                return Credentials.from_authorized_user_info(token_data)
         else:
             # Load as unencrypted JSON
-            return Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+            with open(TOKEN_FILE, 'r', encoding='utf-8') as f:
+                token_data = json.load(f)
+            return Credentials.from_authorized_user_info(token_data)
 
     except (ValueError, json.decoder.JSONDecodeError, TokenEncryptionError) as e:
         raise RuntimeError(f"Error loading token from {TOKEN_FILE}: {e}. Please re-authorize via the web dashboard.")
@@ -187,3 +191,52 @@ def get_gmail_service():
     if not creds:
         raise RuntimeError("Failed to obtain OAuth credentials for Gmail API")
     return build('gmail', 'v1', credentials=creds)
+
+
+def get_granted_scopes():
+    """
+    Returns the list of scopes that were actually granted to the current credentials.
+
+    Returns:
+        list: List of granted scope URLs, or empty list if no credentials available
+    """
+    try:
+        creds = get_credentials()
+        return creds.scopes if creds else []
+    except RuntimeError:
+        # No valid credentials
+        return []
+
+
+def has_scope(scope):
+    """
+    Check if a specific scope is granted in the current credentials.
+
+    Args:
+        scope (str): The scope URL to check
+
+    Returns:
+        bool: True if the scope is granted, False otherwise
+    """
+    granted_scopes = get_granted_scopes()
+    return scope in granted_scopes
+
+
+def has_send_scope():
+    """
+    Check if gmail.send scope is available (required for sending emails).
+
+    Returns:
+        bool: True if send scope is granted
+    """
+    return has_scope('https://www.googleapis.com/auth/gmail.send')
+
+
+def has_readonly_scope():
+    """
+    Check if gmail.readonly scope is available (required for reading emails).
+
+    Returns:
+        bool: True if readonly scope is granted
+    """
+    return has_scope('https://www.googleapis.com/auth/gmail.readonly')

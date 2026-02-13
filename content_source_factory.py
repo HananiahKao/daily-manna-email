@@ -9,9 +9,11 @@ import os
 import content_source
 import ezoe_content_source
 import wix_content_source
+import stmn1_content_source
 ContentSource = content_source.ContentSource
 EzoeContentSource = ezoe_content_source.EzoeContentSource
 WixContentSource = wix_content_source.WixContentSource
+Stmn1ContentSource = stmn1_content_source.Stmn1ContentSource
 
 
 def get_content_source(source_name: str) -> ContentSource:
@@ -21,8 +23,10 @@ def get_content_source(source_name: str) -> ContentSource:
         return EzoeContentSource()
     elif source_name == "wix":
         return WixContentSource()
+    elif source_name == "stmn1":
+        return Stmn1ContentSource()
     else:
-        available_sources = ["ezoe", "wix"]
+        available_sources = ["ezoe", "wix", "stmn1"]
         raise ValueError(f"Unknown content source: {source_name}. Available sources: {', '.join(available_sources)}")
 
 

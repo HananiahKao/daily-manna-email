@@ -311,34 +311,47 @@ def create_app() -> FastAPI:
             # Determine scope status
             extra_scopes = set()
             missing_scopes = set()
+            available_features = []
+            disabled_features = []
 
             if granted_scopes == required_scopes:
                 scope_status = "exact"
+                available_features = ["Email sending", "Schedule replies"]
             elif required_scopes.issubset(granted_scopes):
                 scope_status = "over-authorized"
                 extra_scopes = granted_scopes - required_scopes
+                available_features = ["Email sending", "Schedule replies"]
             else:
-                scope_status = "under-authorized"
+                scope_status = "partial"
                 missing_scopes = required_scopes - granted_scopes
+                # Determine which features are available based on granted scopes
+                if 'https://www.googleapis.com/auth/gmail.send' in granted_scopes:
+                    available_features.append("Email sending")
+                else:
+                    disabled_features.append("Email sending")
+
+                if 'https://www.googleapis.com/auth/gmail.readonly' in granted_scopes:
+                    available_features.append("Schedule replies")
+                else:
+                    disabled_features.append("Schedule replies")
 
             response_data = {
                 "authorized": True,
                 "status": "authorized",
                 "message": "OAuth tokens valid",
-                "scope_status": scope_status
+                "scope_status": scope_status,
+                "available_features": available_features,
+                "disabled_features": disabled_features
             }
 
             if scope_status == "over-authorized":
                 response_data["extra_scopes"] = list(extra_scopes)
                 response_data["extra_scopes_descriptions"] = get_scopes_descriptions(list(extra_scopes))
                 response_data["message"] = "OAuth tokens valid with additional permissions"
-            elif scope_status == "under-authorized":
+            elif scope_status == "partial":
                 response_data["missing_scopes"] = list(missing_scopes)
                 response_data["missing_scopes_descriptions"] = get_scopes_descriptions(list(missing_scopes))
-                response_data["authorized"] = False
-                response_data["status"] = "insufficient"
-                response_data["scope_status"] = scope_status  # Ensure scope_status is preserved
-                response_data["message"] = "OAuth tokens missing required permissions"
+                response_data["message"] = "OAuth tokens valid with partial permissions - some features disabled"
 
             return JSONResponse(response_data)
 

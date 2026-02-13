@@ -22,3 +22,6 @@ client_secret.json
 
 # OAuth encryption key (should be set as environment variable)
 OAUTH_ENCRYPTION_KEY
+
+# Email encryption key (should be set as environment variable)
+EMAIL_ENCRYPTION_KEY

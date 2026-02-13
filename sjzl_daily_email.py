@@ -446,50 +446,84 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
 
 # -------- Email sending --------
 
-def send_email(subject: str, body: str, html_body: TypingOptional[str] = None) -> List[str]:
+def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, content_source: TypingOptional[str] = None) -> List[str]:
     """
-    Send email using Gmail API.
+    Send email using Gmail API to each recipient individually.
     Returns the list of recipients the email was sent to.
+
+    Args:
+        subject: Email subject
+        body: Plain text email body
+        html_body: Optional HTML email body
+        content_source: Content source ('ezoe' or 'wix') to determine recipients from database
     """
     email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
 
-    # Debug mode: send to EMAIL_FROM instead of EMAIL_TO
+    # Debug mode: send to EMAIL_FROM instead of subscribers
     debug_mode = os.getenv("DEBUG_MODE") not in (None, "", "0", "false", "False")
     if debug_mode:
-        email_to_raw = email_from
         recipients = [email_from] if email_from else []
     else:
-        email_to_raw = os.environ["EMAIL_TO"]
-        recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
+        # Get recipients from subscriber database
+        if content_source:
+            try:
+                from app.subscriber_manager import get_subscribers
+                recipients = get_subscribers(content_source)
+                if not recipients:
+                    logger.warning("No active subscribers found for content source: %s", content_source)
+            except Exception as e:
+                logger.error("Failed to get subscribers from database: %s", e)
+                # Fallback to EMAIL_TO for backward compatibility
+                email_to_raw = os.getenv("EMAIL_TO", "")
+                recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
+        else:
+            # Fallback: use EMAIL_TO environment variable for backward compatibility
+            email_to_raw = os.getenv("EMAIL_TO", "")
+            recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
 
-    # Create message
-    msg = MIMEMultipart("alternative")
-    msg["From"] = email_from
-    msg["To"] = ", ".join(recipients)
-    msg["Subject"] = subject
-    msg["Content-Language"] = os.getenv("CONTENT_LANGUAGE", "zh-Hant")
-
-    # Plain-text fallback part
-    text_part = MIMEText(body, "plain", "utf-8")
-    msg.attach(text_part)
-
-    # Optional HTML part
-    if html_body:
-        html_part = MIMEText(html_body, "html", "utf-8")
-        msg.attach(html_part)
-
-    # Encode message for Gmail API
-    raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+    if not recipients:
+        raise ValueError("No recipients configured. Set EMAIL_TO or ensure subscribers exist in database.")
 
     try:
         service = get_gmail_service()
-        message = {
-            'raw': raw_message
-        }
-        sent_message = service.users().messages().send(userId='me', body=message).execute()
-        logger.info("Email sent successfully, message ID: %s", sent_message.get('id'))
+        sent_count = 0
+
+        # Send individual email to each recipient
+        for recipient in recipients:
+            # Create message for this individual recipient
+            msg = MIMEMultipart("alternative")
+            msg["From"] = email_from
+            msg["To"] = recipient  # Individual recipient
+            msg["Subject"] = subject
+            msg["Content-Language"] = os.getenv("CONTENT_LANGUAGE", "zh-Hant")
+
+            # Plain-text fallback part
+            text_part = MIMEText(body, "plain", "utf-8")
+            msg.attach(text_part)
+
+            # Optional HTML part
+            if html_body:
+                html_part = MIMEText(html_body, "html", "utf-8")
+                msg.attach(html_part)
+
+            # Encode message for Gmail API
+            raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
+
+            try:
+                message = {
+                    'raw': raw_message
+                }
+                sent_message = service.users().messages().send(userId='me', body=message).execute()
+                sent_count += 1
+                logger.info("Email sent to %s, message ID: %s", recipient, sent_message.get('id'))
+            except Exception as e:
+                logger.error("Failed to send email to %s: %s", recipient, e)
+                # Continue with other recipients even if one fails
+
+        logger.info("Email sent successfully to %d out of %d recipients", sent_count, len(recipients))
+
     except Exception as e:
-        logger.error("Failed to send email via Gmail API: %s", e)
+        logger.error("Failed to send emails via Gmail API: %s", e)
         raise
 
     return recipients
@@ -660,7 +694,7 @@ def run_once() -> int:
         # Convert visible content to zh-TW (server side) for both HTML and text
         html_with_css = _maybe_convert_zh_cn_to_zh_tw(html_with_css)
         body = _maybe_convert_zh_cn_to_zh_tw(body)
-        recipients = send_email(subject, body, html_body=html_with_css)
+        recipients = send_email(subject, body, html_body=html_with_css, content_source="ezoe")
         logger.info("HTML email (ezoe) sent to %s", ", ".join(recipients))
         return 0
     # Allow override for testing SMTP without discovery/fetch variability
@@ -711,7 +745,7 @@ def run_once() -> int:
     _debug_preview("SJZL_SUBJECT", subject)
     _debug_preview("SJZL_BODY", body)
 
-    recipients = send_email(subject, body, html_body=html_body)
+    recipients = send_email(subject, body, html_body=html_body, content_source="ezoe")
     logger.info("Email sent to %s", ", ".join(recipients))
     return 0
 
