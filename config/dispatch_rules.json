@@ -32,6 +32,22 @@
     }
   },
   {
+    "name": "stmn1-bible-journey-daily-send",
+    "time": "06:00",
+    "days": [
+      "daily"
+    ],
+    "commands": [
+      [
+        "bash",
+        "scripts/run_daily_stateful_ezoe.sh"
+      ]
+    ],
+    "env": {
+      "CONTENT_SOURCE": "stmn1"
+    }
+  },
+  {
     "name": "bible-journey-weekly-summary",
     "time": "21:00",
     "days": [
@@ -61,6 +77,22 @@
     ],
     "env": {
       "CONTENT_SOURCE": "wix"
+    }
+  },
+  {
+    "name": "stmn1-bible-journey-weekly-summary",
+    "time": "21:00",
+    "days": [
+      6
+    ],
+    "commands": [
+      [
+        "bash",
+        "scripts/run_weekly_schedule_summary.sh"
+      ]
+    ],
+    "env": {
+      "CONTENT_SOURCE": "stmn1"
     }
   }
 ]
