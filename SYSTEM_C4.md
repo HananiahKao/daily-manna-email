@@ -147,8 +147,6 @@ flowchart TB
 
     %% Job tracking
     ParallelExec --> ExecutionHistory
-    DirectCron -.-> ExecutionHistory
-    %% Dashed line to show direct execution also tracked
 
     ExecutionHistory --> Statistics
     Statistics --> Pagination
@@ -310,7 +308,6 @@ flowchart LR
     ExecuteWithRetries --> ExecuteSingleAttempt
     ExecuteSingleAttempt --> StartJob
     ExecuteSingleAttempt --> UpdateJob
-    ExecuteSingleAttempt --> RetryJob
     ExecuteSingleAttempt --> NextEntry
     ExecuteSingleAttempt --> EnsureWeek
     ExecuteSingleAttempt --> FetchMailbox
