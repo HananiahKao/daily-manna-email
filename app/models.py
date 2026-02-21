@@ -64,8 +64,14 @@ def init_database(database_url: str) -> None:
             pool_recycle=300,
         )
 
-    # Create tables
-    Base.metadata.create_all(bind=engine)  # type: ignore
+    # Create tables - Handle case where tables already exist
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        Base.metadata.create_all(bind=engine)  # type: ignore
+    except Exception as e:
+        # Log the error but continue initialization
+        logger.warning("Table creation skipped: %s", str(e))
 
     # Create session factory
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
