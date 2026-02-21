@@ -252,3 +252,115 @@ def test_debug_enabled():
             os.environ["DEBUG_MODE"] = orig_debug_mode
         elif "DEBUG_MODE" in os.environ:
             del os.environ["DEBUG_MODE"]
+
+
+@patch("sjzl_daily_email.get_gmail_service")
+def test_send_email_recipient_source_email(mock_gmail, monkeypatch):
+    # Test RECIPIENT_SOURCE=email mode
+    monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("EMAIL_TO", "to@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
+    monkeypatch.delenv("DEBUG_MODE", raising=False)
+
+    # Mock Gmail service
+    mock_service = MagicMock()
+    mock_gmail.return_value = mock_service
+
+    sjzl.send_email("Test Subject", "Test Body")
+
+    assert mock_gmail.called
+
+
+@patch("sjzl_daily_email.get_gmail_service")
+def test_send_email_recipient_source_email_missing_to(mock_gmail, monkeypatch):
+    # Test RECIPIENT_SOURCE=email mode with missing EMAIL_TO
+    monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
+    monkeypatch.delenv("EMAIL_TO", raising=False)
+    monkeypatch.delenv("DEBUG_MODE", raising=False)
+
+    with pytest.raises(ValueError) as exc_info:
+        sjzl.send_email("Test Subject", "Test Body")
+
+    assert "RECIPIENT_SOURCE=email but EMAIL_TO is empty or not set" in str(exc_info.value)
+
+
+@patch("sjzl_daily_email.get_gmail_service")
+@patch("app.subscriber_manager.get_subscribers")
+def test_send_email_recipient_source_db(mock_get_subscribers, mock_gmail, monkeypatch):
+    # Test RECIPIENT_SOURCE=db mode
+    monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "db")
+    monkeypatch.delenv("DEBUG_MODE", raising=False)
+
+    # Mock subscribers
+    mock_get_subscribers.return_value = ["subscriber1@example.com", "subscriber2@example.com"]
+
+    # Mock Gmail service
+    mock_service = MagicMock()
+    mock_gmail.return_value = mock_service
+
+    recipients = sjzl.send_email("Test Subject", "Test Body", content_source="stmn1")
+
+    assert recipients == ["subscriber1@example.com", "subscriber2@example.com"]
+    mock_get_subscribers.assert_called_once_with("stmn1")
+
+
+@patch("sjzl_daily_email.get_gmail_service")
+@patch("app.subscriber_manager.get_subscribers")
+def test_send_email_recipient_source_db_empty_subscribers(mock_get_subscribers, mock_gmail, monkeypatch):
+    # Test RECIPIENT_SOURCE=db mode with empty subscribers
+    monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "db")
+    monkeypatch.delenv("DEBUG_MODE", raising=False)
+
+    # Mock empty subscribers
+    mock_get_subscribers.return_value = []
+
+    with pytest.raises(ValueError) as exc_info:
+        sjzl.send_email("Test Subject", "Test Body", content_source="stmn1")
+
+    assert "RECIPIENT_SOURCE=db but no active subscribers found for content source: stmn1" in str(exc_info.value)
+
+
+@patch("sjzl_daily_email.get_gmail_service")
+def test_send_email_recipient_source_db_no_content_source(mock_gmail, monkeypatch):
+    # Test RECIPIENT_SOURCE=db mode without content source
+    monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "db")
+    monkeypatch.delenv("DEBUG_MODE", raising=False)
+
+    with pytest.raises(ValueError) as exc_info:
+        sjzl.send_email("Test Subject", "Test Body")
+
+    assert "RECIPIENT_SOURCE=db but no content_source specified" in str(exc_info.value)
+
+
+@patch("sjzl_daily_email.get_gmail_service")
+def test_send_email_recipient_source_invalid(mock_gmail, monkeypatch):
+    # Test RECIPIENT_SOURCE with invalid value
+    monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "invalid")
+    monkeypatch.delenv("DEBUG_MODE", raising=False)
+
+    with pytest.raises(ValueError) as exc_info:
+        sjzl.send_email("Test Subject", "Test Body")
+
+    assert "Invalid RECIPIENT_SOURCE value: 'invalid'. Allowed values: 'email', 'db'" in str(exc_info.value)
+
+
+@patch("sjzl_daily_email.get_gmail_service")
+def test_send_email_recipient_source_default(mock_gmail, monkeypatch):
+    # Test default behavior (email mode)
+    monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("EMAIL_TO", "to@example.com")
+    monkeypatch.delenv("RECIPIENT_SOURCE", raising=False)
+    monkeypatch.delenv("DEBUG_MODE", raising=False)
+
+    # Mock Gmail service
+    mock_service = MagicMock()
+    mock_gmail.return_value = mock_service
+
+    sjzl.send_email("Test Subject", "Test Body")
+
+    assert mock_gmail.called
