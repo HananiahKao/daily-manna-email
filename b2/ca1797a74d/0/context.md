@@ -1,0 +1,24 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+why this failed FAILED tests/test_email_e2e.py::test_email_pipeline_e2e_ezoe_mode - assert 'ezoe.work' in '<!doctype html>\n<html><head><meta charset=\'utf-8\'><style type="text/css">.email-page{backgr...
+
+### Prompt 2
+
+long-term fix
+
+### Prompt 3
+
+FAILED tests/test_sjzl_daily_email.py::test_list_index_pages_discovers_and_stops - AttributeError: module 'sjzl_daily_email' has no attribute 'SJZL_BASE'
+
+### Prompt 4
+
+ok.
+
+### Prompt 5
+
+commit
+
