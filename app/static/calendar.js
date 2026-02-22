@@ -134,7 +134,9 @@
       if (this.contentSourceSelect) {
         this.contentSourceSelect.addEventListener("change", (event) => {
           this.currentContentSource = event.target.value;
-          this.resetToMonth(); // Refresh calendar with new content source
+          this.loadBatchUIConfig().then(() => {
+            this.resetToMonth(); // Refresh calendar with new content source
+          });
         });
       }
     }
@@ -1175,6 +1177,19 @@
       this.statusInput.value = isMissing ? "" : entry.status || "";
       this.notesInput.value = isMissing ? "" : entry.notes || "";
       this.overrideInput.value = isMissing ? "" : entry.override || "";
+      
+      // Update selector input placeholder based on content source
+      if (this.batchUIConfig) {
+        // For single entry, we might want to show a simpler example
+        // If batch config has examples, use the first one
+        if (this.batchUIConfig.examples && this.batchUIConfig.examples.length > 0) {
+          this.selectorInput.placeholder = `e.g. ${this.batchUIConfig.examples[0]}`;
+        } else if (this.batchUIConfig.placeholder) {
+          // Fallback to batch placeholder if no examples
+          this.selectorInput.placeholder = this.batchUIConfig.placeholder;
+        }
+      }
+      
       this.popoverEl.hidden = false;
       this.activePopoverAnchor = anchor || null;
       this.positionPopover(anchor);
