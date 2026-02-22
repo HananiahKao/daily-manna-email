@@ -565,14 +565,25 @@ def create_app() -> FastAPI:
         }
         return templates.TemplateResponse(request, "dashboard.html", context)
 
+    @app.get("/api/content-sources", response_class=JSONResponse)
+    def api_content_sources(
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get available content sources."""
+        return JSONResponse({
+            "sources": content_source_factory.get_available_sources()
+        })
+
     @app.get("/api/month", response_class=JSONResponse)
     def api_month(
+        request: Request,
         year: Optional[int] = None,
         month: Optional[int] = None,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
 
         # Default to current month if not specified
@@ -614,11 +625,13 @@ def create_app() -> FastAPI:
     # Keep the old week endpoint for backward compatibility
     @app.get("/api/week", response_class=JSONResponse)
     def api_week(
+        request: Request,
         start_date: Optional[str] = None,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
         start = _normalize_week_start(start_date)
         end = _ensure_week(schedule, start, schedule_path)
@@ -636,11 +649,13 @@ def create_app() -> FastAPI:
 
     @app.post("/api/entry", response_class=JSONResponse)
     def api_upsert_entry(
+        request: Request,
         payload: EntryPayload,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
         entry = schedule.get_entry(payload.date)
         created = False
@@ -786,10 +801,15 @@ def create_app() -> FastAPI:
 
     @app.get("/api/batch-edit/config", response_class=JSONResponse)
     def api_batch_edit_config(
+        request: Request,
         _: str = Depends(require_user),
     ) -> JSONResponse:
         """Get UI configuration for batch editing based on active content source."""
-        source = content_source_factory.get_active_source()
+        content_source = request.headers.get("X-Content-Source")
+        if content_source:
+            source = content_source_factory.get_content_source(content_source)
+        else:
+            source = content_source_factory.get_active_source()
         
         config = {
             "source_name": source.get_source_name(),
@@ -801,6 +821,7 @@ def create_app() -> FastAPI:
     @app.post("/api/batch-edit/parse-selectors", response_class=JSONResponse)
     def api_parse_batch_selectors(
         payload: BatchSelectorParsePayload,
+        request: Request,
         _: str = Depends(require_user),
     ) -> JSONResponse:
         """
@@ -808,7 +829,11 @@ def create_app() -> FastAPI:
 
         Returns parsed selectors or error message.
         """
-        source = content_source_factory.get_active_source()
+        content_source = request.headers.get("X-Content-Source")
+        if content_source:
+            source = content_source_factory.get_content_source(content_source)
+        else:
+            source = content_source_factory.get_active_source()
 
         try:
             selectors = source.parse_batch_selectors(payload.input_text)
@@ -1123,9 +1148,13 @@ def _append_note(current: str, addition: str) -> str:
     return f"{existing} | {addition}"
 
 
-def _resolve_schedule_path(settings: AppConfig) -> Path:
+def _resolve_schedule_path(settings: AppConfig, content_source: Optional[str] = None) -> Path:
     if settings.schedule_file:
         return settings.schedule_file
+    if content_source:
+        # Derive schedule file from content source
+        filename = f"state/{content_source.lower()}_schedule.json"
+        return (Path(os.getcwd()) / filename).resolve()
     return sm.get_schedule_path()
 
 
@@ -1182,7 +1211,19 @@ def _normalize_week_start(value: Optional[str]) -> dt.date:
 
 def _ensure_week(schedule: sm.Schedule, start: dt.date, schedule_path: Path) -> dt.date:
     end = start + dt.timedelta(days=6)
-    source = content_source_factory.get_active_source()
+    
+    # Determine content source from schedule path
+    schedule_filename = str(schedule_path)
+    if "wix" in schedule_filename.lower():
+        source = content_source_factory.get_content_source("wix")
+    elif "stmn1" in schedule_filename.lower():
+        source = content_source_factory.get_content_source("stmn1")
+    elif "ezoe" in schedule_filename.lower():
+        source = content_source_factory.get_content_source("ezoe")
+    else:
+        # Fallback to active source if filename doesn't match any known content source
+        source = content_source_factory.get_active_source()
+    
     if sm.ensure_date_range(schedule, source, start, end):
         sm.save_schedule(schedule, schedule_path)
     return end
