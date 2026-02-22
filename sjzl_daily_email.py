@@ -211,9 +211,8 @@ def _wrap_email_html_with_css(content_html: str, css_text: str) -> str:
 # -------- Config & Logging --------
 
 SJZL_BASE = os.getenv("SJZL_BASE", "https://four.soqimp.com/books/2264")
-# Optional alternate source: ezoe.work via standardized selector "<volume>-<lesson>-<day>".
-EZOe_SELECTOR = os.getenv("EZOE_SELECTOR")  # e.g., "2-1-3" (週三)
-EZOe_BASE = os.getenv("EZOE_BASE", "https://ezoe.work/books/2")
+# EZOE_SELECTOR and EZOE_BASE are read fresh inside run_once() so that environment
+# variables set after module import (e.g. in tests via monkeypatch) are respected.
 INDEX_PATTERN = re.compile(r"^index(\d{2})\.html$")  # e.g., index12.html
 LESSON_PATTERN = re.compile(r"^(\d{2,3})\.html$")    # e.g., 210.html
 
@@ -547,6 +546,8 @@ def run_once() -> int:
       - Selector HTML mode (EZOE_SELECTOR set): fetch ezoe.work lesson day HTML and send rich HTML with plain-text fallback.
     """
     today = dt.datetime.now().strftime("%Y-%m-%d")
+    EZOe_SELECTOR = os.getenv("EZOE_SELECTOR")
+    EZOe_BASE = os.getenv("EZOE_BASE", "https://ezoe.work/books/2")
     abs_url = None  # Initialize for footer generation
     # If selector mode is enabled, use ezoe scraper
     if EZOe_SELECTOR:
