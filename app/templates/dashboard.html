@@ -39,6 +39,12 @@
   {% endif %}
 </section>
 <section class="summary">
+  <div class="content-source-selector">
+    <label for="content-source-select">Content Source:</label>
+    <select id="content-source-select">
+      <!-- Options will be dynamically populated by JavaScript -->
+    </select>
+  </div>
   <p>Schedule file: <code>{{ schedule_path }}</code></p>
 </section>
 <section id="oauth-section" class="oauth-status">

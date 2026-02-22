@@ -50,6 +50,7 @@
       this.batchStatusInput = document.getElementById("batch-status");
       this.batchNotesInput = document.getElementById("batch-notes");
       this.batchOverrideInput = document.getElementById("batch-override");
+      this.contentSourceSelect = document.getElementById("content-source-select");
       this.selection = new Set();
       this.lastSelectedDate = null;
       this.dragOriginDate = null;
@@ -76,6 +77,7 @@
         year: "numeric",
       });
       this.batchUIConfig = null;
+      this.currentContentSource = "ezoe"; // Default to ezoe
     }
 
     init() {
@@ -91,8 +93,9 @@
       this.bindSessionDetection();
       this.showInitialFlash();
 
-      // Load batch UI config and schedule data
+      // Load content sources, batch UI config, and schedule data
       Promise.all([
+        this.loadContentSources(),
         this.loadBatchUIConfig(),
         this.resetToMonth()
       ]).catch((error) => {
@@ -124,6 +127,14 @@
       if (this.batchEditBtn) {
         this.batchEditBtn.addEventListener("click", () => {
           this.showBatchEditOverlay();
+        });
+      }
+
+      // Bind content source selector
+      if (this.contentSourceSelect) {
+        this.contentSourceSelect.addEventListener("change", (event) => {
+          this.currentContentSource = event.target.value;
+          this.resetToMonth(); // Refresh calendar with new content source
         });
       }
     }
@@ -419,12 +430,18 @@
         `${window.location.origin}/api/month${params}`,
         {
           credentials: "include",
+          headers: {
+            "X-Content-Source": this.currentContentSource
+          }
         },
       );
       if (!response.ok) {
         throw new Error(await this.extractError(response));
       }
-      return response.json();
+      const data = await response.json();
+      // Update schedule path display
+      this.updateSchedulePath(data.schedule_path);
+      return data;
     }
 
     async ensureMonth(year, month, position) {
@@ -684,11 +701,57 @@
       await this.resetToMonth(this.currentYear, this.currentMonth);
     }
 
+    async loadContentSources() {
+      try {
+        const response = await fetch(
+          `${window.location.origin}/api/content-sources`,
+          { credentials: "include" }
+        );
+        if (!response.ok) {
+          throw new Error("Failed to load content sources");
+        }
+        const data = await response.json();
+        const select = document.getElementById("content-source-select");
+        if (select) {
+          select.innerHTML = "";
+          data.sources.forEach(source => {
+            const option = document.createElement("option");
+            option.value = source;
+            option.textContent = source.charAt(0).toUpperCase() + source.slice(1);
+            select.appendChild(option);
+          });
+          select.value = this.currentContentSource;
+        }
+        return data.sources;
+      } catch (error) {
+        console.error("Error loading content sources:", error);
+        // Fallback to default sources if API fails
+        const defaultSources = ["ezoe", "wix", "stmn1"];
+        const select = document.getElementById("content-source-select");
+        if (select) {
+          select.innerHTML = "";
+          defaultSources.forEach(source => {
+            const option = document.createElement("option");
+            option.value = source;
+            option.textContent = source.charAt(0).toUpperCase() + source.slice(1);
+            select.appendChild(option);
+          });
+          select.value = this.currentContentSource;
+        }
+        return defaultSources;
+      }
+    }
+
     async loadBatchUIConfig() {
       try {
         const response = await fetch(
           `${window.location.origin}/api/batch-edit/config`,
-          { credentials: "include" }
+          { 
+            credentials: "include",
+            headers: {
+              "X-Content-Source": this.currentContentSource
+            }
+          }
         );
         if (!response.ok) {
           throw new Error("Failed to load batch edit configuration");
@@ -706,6 +769,13 @@
           supports_range: false,
           range_example: null,
         };
+      }
+    }
+
+    updateSchedulePath(path) {
+      const schedulePathElement = document.querySelector(".summary code");
+      if (schedulePathElement) {
+        schedulePathElement.textContent = path;
       }
     }
 
@@ -1416,12 +1486,14 @@
     }
 
     async jsonFetch(url, payload, method = "POST") {
+      const headers = {
+        "Content-Type": "application/json",
+        "X-Content-Source": this.currentContentSource
+      };
       const response = await fetch(`${window.location.origin}${url}`, {
         method,
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: headers,
         body: payload ? JSON.stringify(payload) : undefined,
       });
       if (!response.ok) {
