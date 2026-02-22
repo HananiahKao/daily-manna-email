@@ -51,13 +51,14 @@ class EntryPayload(BaseModel):
     notes: Optional[str] = None
     override: Optional[str] = None
 
-    @field_validator("selector")
-    @classmethod
-    def _validate_selector(cls, value: Optional[str]) -> Optional[str]:
-        if value:
-            source = content_source_factory.get_active_source()
-            source.parse_selector(value)
-        return value
+    # Validator will be applied in the endpoint where we have access to request headers
+    # @field_validator("selector")
+    # @classmethod
+    # def _validate_selector(cls, value: Optional[str]) -> Optional[str]:
+    #     if value:
+    #         source = content_source_factory.get_active_source()
+    #         source.parse_selector(value)
+    #     return value
 
     @field_validator("status")
     @classmethod
@@ -657,6 +658,18 @@ def create_app() -> FastAPI:
         content_source = request.headers.get("X-Content-Source")
         schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
+        
+        # Validate selector using the selected content source
+        if payload.selector:
+            if content_source:
+                source = content_source_factory.get_content_source(content_source)
+            else:
+                source = content_source_factory.get_active_source()
+            try:
+                source.parse_selector(payload.selector)
+            except Exception as e:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        
         entry = schedule.get_entry(payload.date)
         created = False
         if not entry:
@@ -754,12 +767,27 @@ def create_app() -> FastAPI:
 
     @app.post("/api/entries/batch", response_class=JSONResponse)
     def api_batch_update_entries(
+        request: Request,
         payload: BatchUpdatePayload,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
+        
+        # Validate selectors using the selected content source
+        if content_source:
+            source = content_source_factory.get_content_source(content_source)
+        else:
+            source = content_source_factory.get_active_source()
+        
+        for entry_payload in payload.entries:
+            if entry_payload.selector:
+                try:
+                    source.parse_selector(entry_payload.selector)
+                except Exception as e:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
         updated_entries = []
         for entry_payload in payload.entries:
