@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "f611e3c8ac80",
+  "session_id": "9e68000e-90ab-4f19-a993-5ce1b3f2179e",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-23T12:31:23.379266Z",
+  "branch": "feature/email-activity-dashboard",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "app/static/style.css",
+    "docs/CAFFEINE_MODE.md",
+    "tests/test_caffeine_mode.py",
+    "app/caffeine_mode.py",
+    "app/config.py",
+    "app/static/caffeine_mode.js",
+    "app/static/calendar.js",
+    "app/templates/dashboard.html",
+    "app/job_tracker.py",
+    "app/main.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "2995e729b308",
+  "token_usage": {
+    "input_tokens": 17,
+    "cache_creation_tokens": 6705,
+    "cache_read_tokens": 250409,
+    "output_tokens": 122,
+    "api_call_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-23T12:31:23.352141Z",
+    "agent_lines": 940,
+    "human_added": 32,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 972,
+    "agent_percentage": 96.70781893004116
+  },
+  "transcript_path": ".claude/projects/-Users-hananiah-Developer-daily-manna-email/9e68000e-90ab-4f19-a993-5ce1b3f2179e.jsonl"
+}

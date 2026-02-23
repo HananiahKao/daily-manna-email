@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "f611e3c8ac80",
+  "strategy": "manual-commit",
+  "branch": "feature/email-activity-dashboard",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "app/caffeine_mode.py",
+    "app/config.py",
+    "app/job_tracker.py",
+    "app/main.py",
+    "app/static/caffeine_mode.js",
+    "app/static/calendar.js",
+    "app/static/style.css",
+    "app/templates/dashboard.html",
+    "docs/CAFFEINE_MODE.md",
+    "tests/test_caffeine_mode.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f6/11e3c8ac80/0/metadata.json",
+      "transcript": "/f6/11e3c8ac80/0/full.jsonl",
+      "context": "/f6/11e3c8ac80/0/context.md",
+      "content_hash": "/f6/11e3c8ac80/0/content_hash.txt",
+      "prompt": "/f6/11e3c8ac80/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 17,
+    "cache_creation_tokens": 6705,
+    "cache_read_tokens": 250409,
+    "output_tokens": 122,
+    "api_call_count": 11
+  }
+}
