@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 import os
 import json
 import requests
+import asyncio
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -36,6 +37,7 @@ from app.config import AppConfig, get_config
 from app.security import require_user, authenticate_user, login_required, require_user_or_redirect
 from app.oauth_scopes import get_scopes_descriptions
 from app.cron_runner import get_cron_runner, shutdown_cron_runner
+from app.caffeine_mode import start_caffeine_mode
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -195,6 +197,20 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def healthz() -> JSONResponse:
         return JSONResponse({"status": "ok"})
+
+    @app.get("/api/caffeine")
+    def caffeine() -> JSONResponse:
+        """Caffeine mode endpoint to prevent server from sleeping."""
+        return JSONResponse({"status": "awake", "message": "Server is awake and active"})
+
+    @app.get("/api/caffeine-status")
+    def caffeine_status(settings: AppConfig = Depends(get_config)) -> JSONResponse:
+        """Get caffeine mode status."""
+        return JSONResponse({
+            "enabled": settings.caffeine_mode,
+            "message": "Caffeine mode is active" if settings.caffeine_mode else "Caffeine mode is inactive",
+            "interval": settings.caffeine_interval
+        })
 
     @app.get("/privacy-policy", response_class=HTMLResponse)
     def privacy_policy(request: Request) -> HTMLResponse:
@@ -1185,12 +1201,15 @@ app = create_app()
 # Add startup and shutdown events for cron runner
 @app.on_event("startup")
 async def startup_event():
-    """Initialize cron runner on app startup."""
+    """Initialize cron runner and caffeine mode on app startup."""
     try:
         cron_runner = await get_cron_runner()
         # Cron runner starts automatically in get_cron_runner()
+        
+        # Start caffeine mode in background
+        asyncio.create_task(start_caffeine_mode())
     except Exception as e:
-        print(f"Warning: Failed to start cron runner: {e}")
+        print(f"Warning: Failed to start background services: {e}")
 
 
 @app.on_event("shutdown")
