@@ -50,6 +50,7 @@
       this.batchStatusInput = document.getElementById("batch-status");
       this.batchNotesInput = document.getElementById("batch-notes");
       this.batchOverrideInput = document.getElementById("batch-override");
+      this.contentSourceSelect = document.getElementById("content-source-select");
       this.selection = new Set();
       this.lastSelectedDate = null;
       this.dragOriginDate = null;
@@ -76,6 +77,7 @@
         year: "numeric",
       });
       this.batchUIConfig = null;
+      this.currentContentSource = "ezoe"; // Default to ezoe
     }
 
     init() {
@@ -91,8 +93,9 @@
       this.bindSessionDetection();
       this.showInitialFlash();
 
-      // Load batch UI config and schedule data
+      // Load content sources, batch UI config, and schedule data
       Promise.all([
+        this.loadContentSources(),
         this.loadBatchUIConfig(),
         this.resetToMonth()
       ]).catch((error) => {
@@ -124,6 +127,16 @@
       if (this.batchEditBtn) {
         this.batchEditBtn.addEventListener("click", () => {
           this.showBatchEditOverlay();
+        });
+      }
+
+      // Bind content source selector
+      if (this.contentSourceSelect) {
+        this.contentSourceSelect.addEventListener("change", (event) => {
+          this.currentContentSource = event.target.value;
+          this.loadBatchUIConfig().then(() => {
+            this.resetToMonth(); // Refresh calendar with new content source
+          });
         });
       }
     }
@@ -261,9 +274,7 @@
     bindGlobalKeys() {
       document.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
-          this.closePopover();
-          this.hideDateAdjustOverlay();
-          this.hideBatchEditOverlay();
+          this.closeAllOverlays();
           return;
         }
         if (
@@ -280,6 +291,66 @@
           this.showDateAdjustOverlay();
         }
       });
+    }
+
+    // Centralized overlay management
+    closeAllOverlays() {
+      this.closePopover();
+      this.hideDateAdjustOverlay();
+      this.hideBatchEditOverlay();
+      this.hideNotificationOverlay();
+      this.hideDispatchOverlay();
+      this.hideCaffeineOverlay();
+    }
+
+    // Overlay visibility helpers
+    isOverlayVisible(overlayId) {
+      const overlay = document.getElementById(overlayId);
+      return overlay && !overlay.hidden;
+    }
+
+    hideAllOverlaysExcept(exceptId) {
+      const overlayIds = [
+        'calendar-popover',
+        'date-adjust-overlay',
+        'batch-edit-overlay',
+        'notification-overlay',
+        'dispatch-overlay',
+        'caffeine-overlay'
+      ];
+
+      overlayIds.forEach(id => {
+        if (id !== exceptId) {
+          const overlay = document.getElementById(id);
+          if (overlay && !overlay.hidden) {
+            overlay.hidden = true;
+          }
+        }
+      });
+    }
+
+    // Notification overlay management
+    hideNotificationOverlay() {
+      const overlay = document.getElementById('notification-overlay');
+      if (overlay) {
+        overlay.hidden = true;
+      }
+    }
+
+    // Dispatch overlay management
+    hideDispatchOverlay() {
+      const overlay = document.getElementById('dispatch-overlay');
+      if (overlay) {
+        overlay.hidden = true;
+      }
+    }
+
+    // Caffeine overlay management
+    hideCaffeineOverlay() {
+      const overlay = document.getElementById('caffeine-overlay');
+      if (overlay) {
+        overlay.hidden = true;
+      }
     }
 
     bindScrollBehavior() {
@@ -361,12 +432,18 @@
         `${window.location.origin}/api/month${params}`,
         {
           credentials: "include",
+          headers: {
+            "X-Content-Source": this.currentContentSource
+          }
         },
       );
       if (!response.ok) {
         throw new Error(await this.extractError(response));
       }
-      return response.json();
+      const data = await response.json();
+      // Update schedule path display
+      this.updateSchedulePath(data.schedule_path);
+      return data;
     }
 
     async ensureMonth(year, month, position) {
@@ -626,11 +703,57 @@
       await this.resetToMonth(this.currentYear, this.currentMonth);
     }
 
+    async loadContentSources() {
+      try {
+        const response = await fetch(
+          `${window.location.origin}/api/content-sources`,
+          { credentials: "include" }
+        );
+        if (!response.ok) {
+          throw new Error("Failed to load content sources");
+        }
+        const data = await response.json();
+        const select = document.getElementById("content-source-select");
+        if (select) {
+          select.innerHTML = "";
+          data.sources.forEach(source => {
+            const option = document.createElement("option");
+            option.value = source;
+            option.textContent = source.charAt(0).toUpperCase() + source.slice(1);
+            select.appendChild(option);
+          });
+          select.value = this.currentContentSource;
+        }
+        return data.sources;
+      } catch (error) {
+        console.error("Error loading content sources:", error);
+        // Fallback to default sources if API fails
+        const defaultSources = ["ezoe", "wix", "stmn1"];
+        const select = document.getElementById("content-source-select");
+        if (select) {
+          select.innerHTML = "";
+          defaultSources.forEach(source => {
+            const option = document.createElement("option");
+            option.value = source;
+            option.textContent = source.charAt(0).toUpperCase() + source.slice(1);
+            select.appendChild(option);
+          });
+          select.value = this.currentContentSource;
+        }
+        return defaultSources;
+      }
+    }
+
     async loadBatchUIConfig() {
       try {
         const response = await fetch(
           `${window.location.origin}/api/batch-edit/config`,
-          { credentials: "include" }
+          { 
+            credentials: "include",
+            headers: {
+              "X-Content-Source": this.currentContentSource
+            }
+          }
         );
         if (!response.ok) {
           throw new Error("Failed to load batch edit configuration");
@@ -648,6 +771,13 @@
           supports_range: false,
           range_example: null,
         };
+      }
+    }
+
+    updateSchedulePath(path) {
+      const schedulePathElement = document.querySelector(".summary code");
+      if (schedulePathElement) {
+        schedulePathElement.textContent = path;
       }
     }
 
@@ -1027,6 +1157,10 @@
       if (!this.popoverEl) {
         return;
       }
+      
+      // Hide all other overlays before showing this one
+      this.hideAllOverlaysExcept('calendar-popover');
+      
       const entry = this.entriesIndex.get(date);
       const isMissing = !entry || entry.is_missing || resetOnly;
       this.popoverDateInput.value = date;
@@ -1043,6 +1177,19 @@
       this.statusInput.value = isMissing ? "" : entry.status || "";
       this.notesInput.value = isMissing ? "" : entry.notes || "";
       this.overrideInput.value = isMissing ? "" : entry.override || "";
+      
+      // Update selector input placeholder based on content source
+      if (this.batchUIConfig) {
+        // For single entry, we might want to show a simpler example
+        // If batch config has examples, use the first one
+        if (this.batchUIConfig.examples && this.batchUIConfig.examples.length > 0) {
+          this.selectorInput.placeholder = `e.g. ${this.batchUIConfig.examples[0]}`;
+        } else if (this.batchUIConfig.placeholder) {
+          // Fallback to batch placeholder if no examples
+          this.selectorInput.placeholder = this.batchUIConfig.placeholder;
+        }
+      }
+      
       this.popoverEl.hidden = false;
       this.activePopoverAnchor = anchor || null;
       this.positionPopover(anchor);
@@ -1084,6 +1231,9 @@
       if (!this.dateAdjustOverlay) {
         return;
       }
+      // Hide all other overlays before showing this one
+      this.hideAllOverlaysExcept('date-adjust-overlay');
+      
       const earliest = [...this.selection].sort()[0];
       this.dateAdjustInput.value = earliest || "";
       this.dateAdjustOverlay.hidden = false;
@@ -1100,6 +1250,9 @@
       if (!this.batchEditOverlay || !this.selection.size) {
         return;
       }
+
+      // Hide all other overlays before showing this one
+      this.hideAllOverlaysExcept('batch-edit-overlay');
 
       // Clear form
       if (this.batchSelectorInput) {
@@ -1348,12 +1501,14 @@
     }
 
     async jsonFetch(url, payload, method = "POST") {
+      const headers = {
+        "Content-Type": "application/json",
+        "X-Content-Source": this.currentContentSource
+      };
       const response = await fetch(`${window.location.origin}${url}`, {
         method,
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: headers,
         body: payload ? JSON.stringify(payload) : undefined,
       });
       if (!response.ok) {
@@ -1389,5 +1544,9 @@
   document.addEventListener("DOMContentLoaded", () => {
     const app = new CalendarApp(window.CalendarConfig || {});
     app.init();
+    
+    // Expose overlay management functions globally
+    window.hideAllOverlaysExcept = (exceptId) => app.hideAllOverlaysExcept(exceptId);
+    window.closeAllOverlays = () => app.closeAllOverlays();
   });
 })();

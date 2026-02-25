@@ -282,10 +282,9 @@ def _handle_ensure_week(args: argparse.Namespace) -> int:
         try:
             _send_summary_email(subject, text_body, html_body)
             emailed = True
-        except RuntimeError as exc:
-            print(f"WARNING: {exc}", file=sys.stderr)
         except Exception as exc:
             print(f"ERROR: failed to send summary email: {exc}", file=sys.stderr)
+            return 1
 
     payload = {
         "start": start.isoformat(),

@@ -8,10 +8,16 @@ __pycache__/
 .coverage
 .pytest_cache/
 
+# IDE configuration
+.entire/
+
 debug.env
 
 # Test environment logs
 test_env*.log
+
+# Application logs
+logs/
 
 # OAuth credentials
 token.json

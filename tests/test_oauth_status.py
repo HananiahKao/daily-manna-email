@@ -21,21 +21,23 @@ def _auth_header(user: str = "admin", password: str = "secret") -> dict[str, str
     token = base64.b64encode(f"{user}:{password}".encode("utf-8")).decode("utf-8")
     return {"Authorization": f"Basic {token}"}
 
-def test_oauth_status_no_token_file():
+def test_oauth_status_no_token_file(fs):
     """Test oauth_status when token.json doesn't exist."""
     # Set up test environment
     os.environ["ADMIN_DASHBOARD_USER"] = "admin"
     os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
 
-    # Temporarily move existing token.json if it exists
-    token_path = PROJECT_ROOT / "token.json"
-    backup_path = PROJECT_ROOT / "token.json.backup"
-    token_existed = token_path.exists()
+    # Create fake project structure in fake file system
+    fake_project_root = "/fake/project"
+    fs.create_dir(fake_project_root)
+    fs.create_dir(f"{fake_project_root}/state")
+    fs.create_dir(f"{fake_project_root}/app")
+    fs.create_dir(f"{fake_project_root}/app/static")
 
-    if token_existed:
-        token_path.rename(backup_path)
-
-    try:
+    # Patch PROJECT_ROOT and STATIC_DIR in app.main to point to fake paths
+    fake_static_dir = Path(fake_project_root) / "app" / "static"
+    with patch('app.main.PROJECT_ROOT', new=Path(fake_project_root)), \
+         patch('app.main.STATIC_DIR', new=fake_static_dir):
         app = create_app()
         client = TestClient(app)
 
@@ -48,21 +50,22 @@ def test_oauth_status_no_token_file():
         assert data["status"] == "unauthorized"
         assert data["scope_status"] == "none"
         print("✓ Test passed: No token file")
-    finally:
-        # Restore original token.json if it existed
-        if token_existed and backup_path.exists():
-            backup_path.rename(token_path)
 
-def test_oauth_status_invalid_token():
+def test_oauth_status_invalid_token(fs):
     """Test oauth_status with invalid token (simulated tokeninfo response)."""
     # Set up test environment
     os.environ["ADMIN_DASHBOARD_USER"] = "admin"
     os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
 
-    app = create_app()
+    # Create fake project structure in fake file system
+    fake_project_root = "/fake/project"
+    fs.create_dir(fake_project_root)
+    fs.create_dir(f"{fake_project_root}/state")
+    fs.create_dir(f"{fake_project_root}/app")
+    fs.create_dir(f"{fake_project_root}/app/static")
 
-    # Create a fake token.json file
-    fake_token_path = PROJECT_ROOT / "token.json"
+    # Create fake token.json
+    fake_token_path = Path(fake_project_root) / "token.json"
     fake_creds = {
         "token": "invalid_token",
         "refresh_token": "refresh_token",
@@ -71,10 +74,13 @@ def test_oauth_status_invalid_token():
         "client_secret": "client_secret",
         "scopes": ["https://www.googleapis.com/auth/gmail.send"]
     }
+    fs.create_file(fake_token_path, contents=json.dumps(fake_creds))
 
-    try:
-        with open(fake_token_path, 'w') as f:
-            json.dump(fake_creds, f)
+    # Patch PROJECT_ROOT and STATIC_DIR in app.main to point to fake paths
+    fake_static_dir = Path(fake_project_root) / "app" / "static"
+    with patch('app.main.PROJECT_ROOT', new=Path(fake_project_root)), \
+         patch('app.main.STATIC_DIR', new=fake_static_dir):
+        app = create_app()
 
         with patch('requests.get') as mock_get:
             # Mock tokeninfo response for invalid token
@@ -93,21 +99,21 @@ def test_oauth_status_invalid_token():
             assert data["scope_status"] == "partial"
             print("✓ Test passed: Invalid token detection")
 
-    finally:
-        # Clean up
-        if fake_token_path.exists():
-            fake_token_path.unlink()
-
-def test_oauth_status_valid_token():
+def test_oauth_status_valid_token(fs):
     """Test oauth_status with valid token (simulated tokeninfo response)."""
     # Set up test environment
     os.environ["ADMIN_DASHBOARD_USER"] = "admin"
     os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
 
-    app = create_app()
+    # Create fake project structure in fake file system
+    fake_project_root = "/fake/project"
+    fs.create_dir(fake_project_root)
+    fs.create_dir(f"{fake_project_root}/state")
+    fs.create_dir(f"{fake_project_root}/app")
+    fs.create_dir(f"{fake_project_root}/app/static")
 
-    # Create a fake token.json file
-    fake_token_path = PROJECT_ROOT / "token.json"
+    # Create fake token.json
+    fake_token_path = Path(fake_project_root) / "token.json"
     fake_creds = {
         "token": "valid_token",
         "refresh_token": "refresh_token",
@@ -116,10 +122,13 @@ def test_oauth_status_valid_token():
         "client_secret": "client_secret",
         "scopes": ["https://www.googleapis.com/auth/gmail.send", "https://www.googleapis.com/auth/gmail.readonly"]
     }
+    fs.create_file(fake_token_path, contents=json.dumps(fake_creds))
 
-    try:
-        with open(fake_token_path, 'w') as f:
-            json.dump(fake_creds, f)
+    # Patch PROJECT_ROOT and STATIC_DIR in app.main to point to fake paths
+    fake_static_dir = Path(fake_project_root) / "app" / "static"
+    with patch('app.main.PROJECT_ROOT', new=Path(fake_project_root)), \
+         patch('app.main.STATIC_DIR', new=fake_static_dir):
+        app = create_app()
 
         with patch('requests.get') as mock_get:
             # Mock tokeninfo response for valid token
@@ -142,21 +151,21 @@ def test_oauth_status_valid_token():
             assert data["scope_status"] == "exact"
             print("✓ Test passed: Valid token with exact scopes")
 
-    finally:
-        # Clean up
-        if fake_token_path.exists():
-            fake_token_path.unlink()
-
-def test_oauth_status_over_authorized():
+def test_oauth_status_over_authorized(fs):
     """Test oauth_status with over-authorized token (extra scopes)."""
     # Set up test environment
     os.environ["ADMIN_DASHBOARD_USER"] = "admin"
     os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
 
-    app = create_app()
+    # Create fake project structure in fake file system
+    fake_project_root = "/fake/project"
+    fs.create_dir(fake_project_root)
+    fs.create_dir(f"{fake_project_root}/state")
+    fs.create_dir(f"{fake_project_root}/app")
+    fs.create_dir(f"{fake_project_root}/app/static")
 
-    # Create a fake token.json file
-    fake_token_path = PROJECT_ROOT / "token.json"
+    # Create fake token.json
+    fake_token_path = Path(fake_project_root) / "token.json"
     fake_creds = {
         "token": "valid_token",
         "refresh_token": "refresh_token",
@@ -165,10 +174,13 @@ def test_oauth_status_over_authorized():
         "client_secret": "client_secret",
         "scopes": ["https://www.googleapis.com/auth/gmail.send", "https://www.googleapis.com/auth/gmail.readonly"]
     }
+    fs.create_file(fake_token_path, contents=json.dumps(fake_creds))
 
-    try:
-        with open(fake_token_path, 'w') as f:
-            json.dump(fake_creds, f)
+    # Patch PROJECT_ROOT and STATIC_DIR in app.main to point to fake paths
+    fake_static_dir = Path(fake_project_root) / "app" / "static"
+    with patch('app.main.PROJECT_ROOT', new=Path(fake_project_root)), \
+         patch('app.main.STATIC_DIR', new=fake_static_dir):
+        app = create_app()
 
         with patch('requests.get') as mock_get:
             # Mock tokeninfo response with EXTRA scopes (over-authorized)
@@ -194,21 +206,21 @@ def test_oauth_status_over_authorized():
             assert len(data["extra_scopes_descriptions"]) == 2  # gmail.modify + gmail.compose
             print("✓ Test passed: Over-authorized token with user-friendly descriptions")
 
-    finally:
-        # Clean up
-        if fake_token_path.exists():
-            fake_token_path.unlink()
-
-def test_oauth_status_under_authorized():
+def test_oauth_status_under_authorized(fs):
     """Test oauth_status with under-authorized token (missing scopes)."""
     # Set up test environment
     os.environ["ADMIN_DASHBOARD_USER"] = "admin"
     os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
 
-    app = create_app()
+    # Create fake project structure in fake file system
+    fake_project_root = "/fake/project"
+    fs.create_dir(fake_project_root)
+    fs.create_dir(f"{fake_project_root}/state")
+    fs.create_dir(f"{fake_project_root}/app")
+    fs.create_dir(f"{fake_project_root}/app/static")
 
-    # Create a fake token.json file
-    fake_token_path = PROJECT_ROOT / "token.json"
+    # Create fake token.json
+    fake_token_path = Path(fake_project_root) / "token.json"
     fake_creds = {
         "token": "valid_token",
         "refresh_token": "refresh_token",
@@ -217,10 +229,13 @@ def test_oauth_status_under_authorized():
         "client_secret": "client_secret",
         "scopes": ["https://www.googleapis.com/auth/gmail.send", "https://www.googleapis.com/auth/gmail.readonly"]
     }
+    fs.create_file(fake_token_path, contents=json.dumps(fake_creds))
 
-    try:
-        with open(fake_token_path, 'w') as f:
-            json.dump(fake_creds, f)
+    # Patch PROJECT_ROOT and STATIC_DIR in app.main to point to fake paths
+    fake_static_dir = Path(fake_project_root) / "app" / "static"
+    with patch('app.main.PROJECT_ROOT', new=Path(fake_project_root)), \
+         patch('app.main.STATIC_DIR', new=fake_static_dir):
+        app = create_app()
 
         with patch('requests.get') as mock_get:
             # Mock tokeninfo response with MISSING scopes (under-authorized)
@@ -247,38 +262,61 @@ def test_oauth_status_under_authorized():
             assert "View your email messages and settings" in data["missing_scopes_descriptions"]
             print("✓ Test passed: Partial authorization with user-friendly descriptions")
 
-    finally:
-        # Clean up
-        if fake_token_path.exists():
-            fake_token_path.unlink()
 
-def test_oauth_start_requires_auth():
+def test_oauth_start_requires_auth(fs):
     """Test that OAuth start requires authentication."""
     os.environ["ADMIN_DASHBOARD_USER"] = "admin"
     os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
 
-    app = create_app()
-    client = TestClient(app)
+    # Create fake project structure in fake file system
+    fake_project_root = "/fake/project"
+    fs.create_dir(fake_project_root)
+    fs.create_dir(f"{fake_project_root}/state")
+    fs.create_dir(f"{fake_project_root}/app")
+    fs.create_dir(f"{fake_project_root}/app/static")
+    fs.create_dir(f"{fake_project_root}/app/templates")
 
-    response = client.get("/oauth/start", follow_redirects=False)
-    assert response.status_code == 302
-    assert "login-form" in response.headers["location"]
+    # Create minimal fake template files
+    fs.create_file(f"{fake_project_root}/app/templates/dashboard.html", contents="<html></html>")
+    fs.create_file(f"{fake_project_root}/app/templates/login.html", contents="<html></html>")
+
+    # Patch PROJECT_ROOT, STATIC_DIR, and TEMPLATES_DIR in app.main to point to fake paths
+    fake_static_dir = Path(fake_project_root) / "app" / "static"
+    fake_templates_dir = Path(fake_project_root) / "app" / "templates"
+    with patch('app.main.PROJECT_ROOT', new=Path(fake_project_root)), \
+         patch('app.main.STATIC_DIR', new=fake_static_dir), \
+         patch('app.main.TEMPLATES_DIR', new=fake_templates_dir):
+        app = create_app()
+        client = TestClient(app)
+
+        response = client.get("/oauth/start", follow_redirects=False)
+        assert response.status_code == 302
+        assert "login-form" in response.headers["location"]
 
 
-def test_oauth_start_missing_client_secret():
+def test_oauth_start_missing_client_secret(fs):
     """Test OAuth start when client secret is missing."""
     os.environ["ADMIN_DASHBOARD_USER"] = "admin"
     os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
 
-    # Temporarily rename client_secret.json if it exists
-    client_secret_path = PROJECT_ROOT / "client_secret.json"
-    backup_path = PROJECT_ROOT / "client_secret.json.backup"
-    client_secret_existed = client_secret_path.exists()
+    # Create fake project structure in fake file system
+    fake_project_root = "/fake/project"
+    fs.create_dir(fake_project_root)
+    fs.create_dir(f"{fake_project_root}/state")
+    fs.create_dir(f"{fake_project_root}/app")
+    fs.create_dir(f"{fake_project_root}/app/static")
+    fs.create_dir(f"{fake_project_root}/app/templates")
 
-    if client_secret_existed:
-        client_secret_path.rename(backup_path)
+    # Create minimal fake template files
+    fs.create_file(f"{fake_project_root}/app/templates/dashboard.html", contents="<html></html>")
+    fs.create_file(f"{fake_project_root}/app/templates/login.html", contents="<html></html>")
 
-    try:
+    # Patch PROJECT_ROOT, STATIC_DIR, and TEMPLATES_DIR in app.main to point to fake paths
+    fake_static_dir = Path(fake_project_root) / "app" / "static"
+    fake_templates_dir = Path(fake_project_root) / "app" / "templates"
+    with patch('app.main.PROJECT_ROOT', new=Path(fake_project_root)), \
+         patch('app.main.STATIC_DIR', new=fake_static_dir), \
+         patch('app.main.TEMPLATES_DIR', new=fake_templates_dir):
         app = create_app()
         client = TestClient(app)
 
@@ -289,91 +327,147 @@ def test_oauth_start_missing_client_secret():
         assert response.status_code == 302
         assert "error=OAuth%20client%20secret%20not%20found" in response.headers["location"]
 
-    finally:
-        # Restore original client_secret.json if it existed
-        if client_secret_existed and backup_path.exists():
-            backup_path.rename(client_secret_path)
 
-
-def test_oauth_callback_requires_auth():
+def test_oauth_callback_requires_auth(fs):
     """Test that OAuth callback requires authentication."""
     os.environ["ADMIN_DASHBOARD_USER"] = "admin"
     os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
 
-    app = create_app()
-    client = TestClient(app)
+    # Create fake project structure in fake file system
+    fake_project_root = "/fake/project"
+    fs.create_dir(fake_project_root)
+    fs.create_dir(f"{fake_project_root}/state")
+    fs.create_dir(f"{fake_project_root}/app")
+    fs.create_dir(f"{fake_project_root}/app/static")
+    fs.create_dir(f"{fake_project_root}/app/templates")
 
-    response = client.get("/oauth/callback?code=test&state=test", follow_redirects=False)
-    assert response.status_code == 302
-    assert "login-form" in response.headers["location"]
+    # Create minimal fake template files
+    fs.create_file(f"{fake_project_root}/app/templates/dashboard.html", contents="<html></html>")
+    fs.create_file(f"{fake_project_root}/app/templates/login.html", contents="<html></html>")
+
+    # Patch PROJECT_ROOT, STATIC_DIR, and TEMPLATES_DIR in app.main to point to fake paths
+    fake_static_dir = Path(fake_project_root) / "app" / "static"
+    fake_templates_dir = Path(fake_project_root) / "app" / "templates"
+    with patch('app.main.PROJECT_ROOT', new=Path(fake_project_root)), \
+         patch('app.main.STATIC_DIR', new=fake_static_dir), \
+         patch('app.main.TEMPLATES_DIR', new=fake_templates_dir):
+        app = create_app()
+        client = TestClient(app)
+
+        response = client.get("/oauth/callback?code=test&state=test", follow_redirects=False)
+        assert response.status_code == 302
+        assert "login-form" in response.headers["location"]
 
 
-def test_oauth_callback_missing_params():
+def test_oauth_callback_missing_params(fs):
     """Test OAuth callback with missing required parameters."""
     os.environ["ADMIN_DASHBOARD_USER"] = "admin"
     os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
 
-    app = create_app()
-    client = TestClient(app)
+    # Create fake project structure in fake file system
+    fake_project_root = "/fake/project"
+    fs.create_dir(fake_project_root)
+    fs.create_dir(f"{fake_project_root}/state")
+    fs.create_dir(f"{fake_project_root}/app")
+    fs.create_dir(f"{fake_project_root}/app/static")
+    fs.create_dir(f"{fake_project_root}/app/templates")
 
-    # Login first
-    client.post("/login", data={"username": "admin", "password": "secret"})
+    # Create minimal fake template files
+    fs.create_file(f"{fake_project_root}/app/templates/dashboard.html", contents="<html></html>")
+    fs.create_file(f"{fake_project_root}/app/templates/login.html", contents="<html></html>")
 
-    # Test missing code
-    response = client.get("/oauth/callback?state=test", follow_redirects=False)
-    assert response.status_code == 302
-    assert "error=Missing%20authorization%20parameters" in response.headers["location"]
+    # Patch PROJECT_ROOT, STATIC_DIR, and TEMPLATES_DIR in app.main to point to fake paths
+    fake_static_dir = Path(fake_project_root) / "app" / "static"
+    fake_templates_dir = Path(fake_project_root) / "app" / "templates"
+    with patch('app.main.PROJECT_ROOT', new=Path(fake_project_root)), \
+         patch('app.main.STATIC_DIR', new=fake_static_dir), \
+         patch('app.main.TEMPLATES_DIR', new=fake_templates_dir):
+        app = create_app()
+        client = TestClient(app)
 
-    # Test missing state
-    response = client.get("/oauth/callback?code=test", follow_redirects=False)
-    assert response.status_code == 302
-    assert "error=Missing%20authorization%20parameters" in response.headers["location"]
+        # Login first
+        client.post("/login", data={"username": "admin", "password": "secret"})
+
+        # Test missing code
+        response = client.get("/oauth/callback?state=test", follow_redirects=False)
+        assert response.status_code == 302
+        assert "error=Missing%20authorization%20parameters" in response.headers["location"]
+
+        # Test missing state
+        response = client.get("/oauth/callback?code=test", follow_redirects=False)
+        assert response.status_code == 302
+        assert "error=Missing%20authorization%20parameters" in response.headers["location"]
 
 
-def test_oauth_callback_access_denied():
+def test_oauth_callback_access_denied(fs):
     """Test OAuth callback when user denies access."""
     os.environ["ADMIN_DASHBOARD_USER"] = "admin"
     os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
 
-    app = create_app()
-    client = TestClient(app)
+    # Create fake project structure in fake file system
+    fake_project_root = "/fake/project"
+    fs.create_dir(fake_project_root)
+    fs.create_dir(f"{fake_project_root}/state")
+    fs.create_dir(f"{fake_project_root}/app")
+    fs.create_dir(f"{fake_project_root}/app/static")
+    fs.create_dir(f"{fake_project_root}/app/templates")
 
-    # Login first
-    client.post("/login", data={"username": "admin", "password": "secret"})
+    # Create minimal fake template files
+    fs.create_file(f"{fake_project_root}/app/templates/dashboard.html", contents="<html></html>")
+    fs.create_file(f"{fake_project_root}/app/templates/login.html", contents="<html></html>")
 
-    response = client.get("/oauth/callback?error=access_denied", follow_redirects=False)
-    assert response.status_code == 302
-    assert "error=Authorization%20was%20denied" in response.headers["location"]
+    # Patch PROJECT_ROOT, STATIC_DIR, and TEMPLATES_DIR in app.main to point to fake paths
+    fake_static_dir = Path(fake_project_root) / "app" / "static"
+    fake_templates_dir = Path(fake_project_root) / "app" / "templates"
+    with patch('app.main.PROJECT_ROOT', new=Path(fake_project_root)), \
+         patch('app.main.STATIC_DIR', new=fake_static_dir), \
+         patch('app.main.TEMPLATES_DIR', new=fake_templates_dir):
+        app = create_app()
+        client = TestClient(app)
+
+        # Login first
+        client.post("/login", data={"username": "admin", "password": "secret"})
+
+        response = client.get("/oauth/callback?error=access_denied", follow_redirects=False)
+        assert response.status_code == 302
+        assert "error=Authorization%20was%20denied" in response.headers["location"]
 
 
-def test_oauth_callback_state_mismatch():
+def test_oauth_callback_state_mismatch(fs):
     """Test OAuth callback with state mismatch (CSRF protection)."""
     os.environ["ADMIN_DASHBOARD_USER"] = "admin"
     os.environ["ADMIN_DASHBOARD_PASSWORD"] = "secret"
 
-    app = create_app()
-    client = TestClient(app)
+    # Create fake project structure in fake file system
+    fake_project_root = "/fake/project"
+    fs.create_dir(fake_project_root)
+    fs.create_dir(f"{fake_project_root}/state")
+    fs.create_dir(f"{fake_project_root}/app")
+    fs.create_dir(f"{fake_project_root}/app/static")
+    fs.create_dir(f"{fake_project_root}/app/templates")
 
-    # Login first
-    client.post("/login", data={"username": "admin", "password": "secret"})
+    # Create minimal fake template files
+    fs.create_file(f"{fake_project_root}/app/templates/dashboard.html", contents="<html></html>")
+    fs.create_file(f"{fake_project_root}/app/templates/login.html", contents="<html></html>")
 
-    response = client.get("/oauth/callback?code=test&state=wrong_state", follow_redirects=False)
-    assert response.status_code == 302
-    assert "error=OAuth%20state%20mismatch" in response.headers["location"]
+    # Patch PROJECT_ROOT, STATIC_DIR, and TEMPLATES_DIR in app.main to point to fake paths
+    fake_static_dir = Path(fake_project_root) / "app" / "static"
+    fake_templates_dir = Path(fake_project_root) / "app" / "templates"
+    with patch('app.main.PROJECT_ROOT', new=Path(fake_project_root)), \
+         patch('app.main.STATIC_DIR', new=fake_static_dir), \
+         patch('app.main.TEMPLATES_DIR', new=fake_templates_dir):
+        app = create_app()
+        client = TestClient(app)
+
+        # Login first
+        client.post("/login", data={"username": "admin", "password": "secret"})
+
+        response = client.get("/oauth/callback?code=test&state=wrong_state", follow_redirects=False)
+        assert response.status_code == 302
+        assert "error=OAuth%20state%20mismatch" in response.headers["location"]
 
 
 if __name__ == "__main__":
+    import pytest
     print("Testing oauth_status endpoint with tokeninfo validation...")
-    test_oauth_status_no_token_file()
-    test_oauth_status_invalid_token()
-    test_oauth_status_valid_token()
-    test_oauth_status_over_authorized()
-    test_oauth_status_under_authorized()
-    print("Testing OAuth flow endpoints...")
-    test_oauth_start_requires_auth()
-    test_oauth_start_missing_client_secret()
-    test_oauth_callback_requires_auth()
-    test_oauth_callback_missing_params()
-    test_oauth_callback_access_denied()
-    test_oauth_callback_state_mismatch()
-    print("All tests passed! ✅")
+    pytest.main([__file__, "-v"])

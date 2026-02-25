@@ -211,9 +211,8 @@ def _wrap_email_html_with_css(content_html: str, css_text: str) -> str:
 # -------- Config & Logging --------
 
 SJZL_BASE = os.getenv("SJZL_BASE", "https://four.soqimp.com/books/2264")
-# Optional alternate source: ezoe.work via standardized selector "<volume>-<lesson>-<day>".
-EZOe_SELECTOR = os.getenv("EZOE_SELECTOR")  # e.g., "2-1-3" (週三)
-EZOe_BASE = os.getenv("EZOE_BASE", "https://ezoe.work/books/2")
+# EZOE_SELECTOR and EZOE_BASE are read fresh inside run_once() so that environment
+# variables set after module import (e.g. in tests via monkeypatch) are respected.
 INDEX_PATTERN = re.compile(r"^index(\d{2})\.html$")  # e.g., index12.html
 LESSON_PATTERN = re.compile(r"^(\d{2,3})\.html$")    # e.g., 210.html
 
@@ -464,25 +463,33 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
     if debug_mode:
         recipients = [email_from] if email_from else []
     else:
-        # Get recipients from subscriber database
-        if content_source:
+        # Get recipient source configuration
+        recipient_source = os.getenv("RECIPIENT_SOURCE", "email").strip().lower()
+        
+        if recipient_source == "email":
+            # Case A: RECIPIENT_SOURCE=email - Exclusively use EMAIL_TO
+            email_to_raw = os.getenv("EMAIL_TO", "")
+            recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
+            if not recipients:
+                raise ValueError("RECIPIENT_SOURCE=email but EMAIL_TO is empty or not set.")
+        elif recipient_source == "db":
+            # Case B: RECIPIENT_SOURCE=db - Exclusively use database subscribers
+            if not content_source:
+                raise ValueError("RECIPIENT_SOURCE=db but no content_source specified.")
             try:
                 from app.subscriber_manager import get_subscribers
                 recipients = get_subscribers(content_source)
                 if not recipients:
-                    logger.warning("No active subscribers found for content source: %s", content_source)
+                    raise ValueError(f"RECIPIENT_SOURCE=db but no active subscribers found for content source: {content_source}")
             except Exception as e:
                 logger.error("Failed to get subscribers from database: %s", e)
-                # Fallback to EMAIL_TO for backward compatibility
-                email_to_raw = os.getenv("EMAIL_TO", "")
-                recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
+                raise
         else:
-            # Fallback: use EMAIL_TO environment variable for backward compatibility
-            email_to_raw = os.getenv("EMAIL_TO", "")
-            recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
+            # Invalid configuration
+            raise ValueError(f"Invalid RECIPIENT_SOURCE value: '{recipient_source}'. Allowed values: 'email', 'db'.")
 
     if not recipients:
-        raise ValueError("No recipients configured. Set EMAIL_TO or ensure subscribers exist in database.")
+        raise ValueError("No recipients configured.")
 
     try:
         service = get_gmail_service()
@@ -539,6 +546,8 @@ def run_once() -> int:
       - Selector HTML mode (EZOE_SELECTOR set): fetch ezoe.work lesson day HTML and send rich HTML with plain-text fallback.
     """
     today = dt.datetime.now().strftime("%Y-%m-%d")
+    EZOe_SELECTOR = os.getenv("EZOE_SELECTOR")
+    EZOe_BASE = os.getenv("EZOE_BASE", "https://ezoe.work/books/2")
     abs_url = None  # Initialize for footer generation
     # If selector mode is enabled, use ezoe scraper
     if EZOe_SELECTOR:
@@ -694,7 +703,7 @@ def run_once() -> int:
         # Convert visible content to zh-TW (server side) for both HTML and text
         html_with_css = _maybe_convert_zh_cn_to_zh_tw(html_with_css)
         body = _maybe_convert_zh_cn_to_zh_tw(body)
-        recipients = send_email(subject, body, html_body=html_with_css, content_source="ezoe")
+        recipients = send_email(subject, body, html_body=html_with_css, content_source=active_source.get_source_name())
         logger.info("HTML email (ezoe) sent to %s", ", ".join(recipients))
         return 0
     # Allow override for testing SMTP without discovery/fetch variability

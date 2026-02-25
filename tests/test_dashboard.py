@@ -336,6 +336,62 @@ def test_move_multiple_entries_api(dashboard_client):
     assert schedule.get_entry(target_date + dt.timedelta(days=1)) is not None
 
 
+def test_move_respects_content_source_header(monkeypatch, tmp_path):
+    """Regression: move endpoints must use the schedule for the X-Content-Source header.
+
+    Before the fix, both /api/entry/{date}/move and /api/entries/move ignored
+    the X-Content-Source header and always operated on the default (EZOE)
+    schedule. This caused a spurious "Target date already has an entry" 400
+    error when dragging an entry in the Wix view, because the backend found a
+    conflicting entry in EZOE's schedule even though the target cell appeared
+    empty in the Wix calendar.
+    """
+    get_config.cache_clear()  # type: ignore[attr-defined]
+    monkeypatch.setenv("ADMIN_DASHBOARD_PASSWORD", "secret")
+    monkeypatch.setenv("ADMIN_DASHBOARD_USER", "admin")
+    monkeypatch.delenv("SCHEDULE_FILE", raising=False)  # enable content-source routing
+
+    # Redirect os.getcwd() so state/*.json resolves inside tmp_path
+    monkeypatch.chdir(tmp_path)
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+
+    tuesday = dt.date(2025, 1, 7)
+    thursday = tuesday + dt.timedelta(days=2)
+
+    # Wix schedule: only Tuesday
+    wix_schedule = sm.Schedule(entries=[sm.ScheduleEntry(date=tuesday, selector="wix-entry")])
+    sm.save_schedule(wix_schedule, state_dir / "wix_schedule.json")
+
+    # EZOE schedule: both Tuesday AND Thursday — this is the false-conflict source
+    ezoe_schedule = sm.Schedule(entries=[
+        sm.ScheduleEntry(date=tuesday, selector="ezoe-tue"),
+        sm.ScheduleEntry(date=thursday, selector="ezoe-thu"),
+    ])
+    sm.save_schedule(ezoe_schedule, state_dir / "ezoe_schedule.json")
+
+    app = create_app()
+    client = TestClient(app)
+
+    # Moving Wix's Tuesday to Thursday must succeed (Wix has no Thursday entry)
+    response = client.post(
+        f"/api/entry/{tuesday.isoformat()}/move",
+        headers={**_auth_header(), "X-Content-Source": "wix"},
+        json={"new_date": thursday.isoformat()},
+    )
+    assert response.status_code == 200, response.json()
+
+    # Wix schedule updated correctly
+    updated_wix = sm.load_schedule(state_dir / "wix_schedule.json")
+    assert updated_wix.get_entry(tuesday) is None
+    assert updated_wix.get_entry(thursday) is not None
+    assert updated_wix.get_entry(thursday).selector == "wix-entry"
+
+    # EZOE schedule untouched
+    unchanged_ezoe = sm.load_schedule(state_dir / "ezoe_schedule.json")
+    assert unchanged_ezoe.get_entry(thursday).selector == "ezoe-thu"
+
+
 def test_batch_update_entries_api(dashboard_client):
     """Test batch updating multiple entries."""
     client, schedule_path, base_date = dashboard_client

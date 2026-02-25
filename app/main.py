@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import io
 from pathlib import Path
 import subprocess
 import sys
@@ -10,7 +12,9 @@ from typing import Dict, List, Optional
 from urllib.parse import urlencode
 import os
 import json
+import zipfile
 import requests
+import asyncio
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -30,10 +34,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import schedule_manager as sm
 import content_source_factory
+import job_dispatcher
 
 from app.config import AppConfig, get_config
 from app.security import require_user, authenticate_user, login_required, require_user_or_redirect
 from app.oauth_scopes import get_scopes_descriptions
+from app.cron_runner import get_cron_runner, shutdown_cron_runner
+from app.caffeine_mode import start_caffeine_mode
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -47,13 +54,14 @@ class EntryPayload(BaseModel):
     notes: Optional[str] = None
     override: Optional[str] = None
 
-    @field_validator("selector")
-    @classmethod
-    def _validate_selector(cls, value: Optional[str]) -> Optional[str]:
-        if value:
-            source = content_source_factory.get_active_source()
-            source.parse_selector(value)
-        return value
+    # Validator will be applied in the endpoint where we have access to request headers
+    # @field_validator("selector")
+    # @classmethod
+    # def _validate_selector(cls, value: Optional[str]) -> Optional[str]:
+    #     if value:
+    #         source = content_source_factory.get_active_source()
+    #         source.parse_selector(value)
+    #     return value
 
     @field_validator("status")
     @classmethod
@@ -109,6 +117,48 @@ class BatchSelectorParsePayload(BaseModel):
     input_text: str
 
 
+class DispatchRulePayload(BaseModel):
+    time: Optional[str] = None
+    days: Optional[List[str | int]] = None
+
+    @field_validator("time")
+    @classmethod
+    def _normalize_time(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        return job_dispatcher.normalize_time_str(value)
+
+    @field_validator("days")
+    @classmethod
+    def _normalize_days(cls, value: Optional[List[str | int]]) -> Optional[List[str | int]]:
+        if value is None:
+            return None
+        
+        # Validate and normalize days
+        normalized = []
+        for day in value:
+            if isinstance(day, str):
+                day_str = day.strip().lower()
+                if day_str == "daily":
+                    return ["daily"]
+                raise ValueError(f"Invalid weekday: {day} (must be 0-6 or 'daily')")
+            elif isinstance(day, int):
+                if not 0 <= day <= 6:
+                    raise ValueError(f"Invalid weekday: {day} (must be 0-6)")
+                normalized.append(day)
+            else:
+                raise ValueError(f"Invalid weekday type: {type(day)}")
+        
+        # Remove duplicates and sort
+        normalized = sorted(list(set(normalized)))
+        
+        # If all days selected, return ["daily"]
+        if len(normalized) == 7:
+            return ["daily"]
+        
+        return normalized
+
+
 def git_last_modified_date(file_path: str) -> str:
     """
     Get the last commit date for a file from Git, formatted as 'Month DD, YYYY'.
@@ -151,6 +201,20 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def healthz() -> JSONResponse:
         return JSONResponse({"status": "ok"})
+
+    @app.get("/api/caffeine")
+    def caffeine() -> JSONResponse:
+        """Caffeine mode endpoint to prevent server from sleeping."""
+        return JSONResponse({"status": "awake", "message": "Server is awake and active"})
+
+    @app.get("/api/caffeine-status")
+    def caffeine_status(settings: AppConfig = Depends(get_config)) -> JSONResponse:
+        """Get caffeine mode status."""
+        return JSONResponse({
+            "enabled": settings.caffeine_mode,
+            "message": "Caffeine mode is active" if settings.caffeine_mode else "Caffeine mode is inactive",
+            "interval": settings.caffeine_interval
+        })
 
     @app.get("/privacy-policy", response_class=HTMLResponse)
     def privacy_policy(request: Request) -> HTMLResponse:
@@ -505,14 +569,25 @@ def create_app() -> FastAPI:
         }
         return templates.TemplateResponse(request, "dashboard.html", context)
 
+    @app.get("/api/content-sources", response_class=JSONResponse)
+    def api_content_sources(
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get available content sources."""
+        return JSONResponse({
+            "sources": content_source_factory.get_available_sources()
+        })
+
     @app.get("/api/month", response_class=JSONResponse)
     def api_month(
+        request: Request,
         year: Optional[int] = None,
         month: Optional[int] = None,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
 
         # Default to current month if not specified
@@ -554,11 +629,13 @@ def create_app() -> FastAPI:
     # Keep the old week endpoint for backward compatibility
     @app.get("/api/week", response_class=JSONResponse)
     def api_week(
+        request: Request,
         start_date: Optional[str] = None,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
         start = _normalize_week_start(start_date)
         end = _ensure_week(schedule, start, schedule_path)
@@ -576,12 +653,26 @@ def create_app() -> FastAPI:
 
     @app.post("/api/entry", response_class=JSONResponse)
     def api_upsert_entry(
+        request: Request,
         payload: EntryPayload,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
+        
+        # Validate selector using the selected content source
+        if payload.selector:
+            if content_source:
+                source = content_source_factory.get_content_source(content_source)
+            else:
+                source = content_source_factory.get_active_source()
+            try:
+                source.parse_selector(payload.selector)
+            except Exception as e:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        
         entry = schedule.get_entry(payload.date)
         created = False
         if not entry:
@@ -623,10 +714,12 @@ def create_app() -> FastAPI:
     def api_move_entry(
         date: dt.date,
         payload: EntryMovePayload,
+        request: Request,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
         entry = schedule.get_entry(date)
         if not entry:
@@ -642,10 +735,12 @@ def create_app() -> FastAPI:
     @app.post("/api/entries/move", response_class=JSONResponse)
     def api_move_entries(
         payload: MultiMovePayload,
+        request: Request,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
         entry_map: Dict[dt.date, sm.ScheduleEntry] = {}
         for date_value in payload.source_dates:
@@ -679,12 +774,27 @@ def create_app() -> FastAPI:
 
     @app.post("/api/entries/batch", response_class=JSONResponse)
     def api_batch_update_entries(
+        request: Request,
         payload: BatchUpdatePayload,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
+        
+        # Validate selectors using the selected content source
+        if content_source:
+            source = content_source_factory.get_content_source(content_source)
+        else:
+            source = content_source_factory.get_active_source()
+        
+        for entry_payload in payload.entries:
+            if entry_payload.selector:
+                try:
+                    source.parse_selector(entry_payload.selector)
+                except Exception as e:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
         updated_entries = []
         for entry_payload in payload.entries:
@@ -726,10 +836,15 @@ def create_app() -> FastAPI:
 
     @app.get("/api/batch-edit/config", response_class=JSONResponse)
     def api_batch_edit_config(
+        request: Request,
         _: str = Depends(require_user),
     ) -> JSONResponse:
         """Get UI configuration for batch editing based on active content source."""
-        source = content_source_factory.get_active_source()
+        content_source = request.headers.get("X-Content-Source")
+        if content_source:
+            source = content_source_factory.get_content_source(content_source)
+        else:
+            source = content_source_factory.get_active_source()
         
         config = {
             "source_name": source.get_source_name(),
@@ -741,6 +856,7 @@ def create_app() -> FastAPI:
     @app.post("/api/batch-edit/parse-selectors", response_class=JSONResponse)
     def api_parse_batch_selectors(
         payload: BatchSelectorParsePayload,
+        request: Request,
         _: str = Depends(require_user),
     ) -> JSONResponse:
         """
@@ -748,7 +864,11 @@ def create_app() -> FastAPI:
 
         Returns parsed selectors or error message.
         """
-        source = content_source_factory.get_active_source()
+        content_source = request.headers.get("X-Content-Source")
+        if content_source:
+            source = content_source_factory.get_content_source(content_source)
+        else:
+            source = content_source_factory.get_active_source()
 
         try:
             selectors = source.parse_batch_selectors(payload.input_text)
@@ -789,6 +909,54 @@ def create_app() -> FastAPI:
             "count": len(deleted_dates)
         })
 
+    @app.get("/api/dispatch-rules", response_class=JSONResponse)
+    def api_dispatch_rules(
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        config_path = _resolve_dispatch_config_path()
+        rules = job_dispatcher.load_rules(config_path)
+        payload = {
+            "config_path": str(config_path),
+            "timezone": sm.TZ_NAME,
+            "rules": [
+                {
+                    "name": rule.name,
+                    "time": f"{rule.time.hour:02d}:{rule.time.minute:02d}",
+                    "weekdays": list(rule.weekdays),
+                    "weekdays_label": rule.weekdays_label,
+                }
+                for rule in rules
+            ],
+        }
+        return JSONResponse(payload)
+
+    @app.post("/api/dispatch-rules/{rule_name}", response_class=JSONResponse)
+    def api_update_dispatch_rule(
+        rule_name: str,
+        payload: DispatchRulePayload,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        config_path = _resolve_dispatch_config_path()
+        rules = _load_dispatch_config(config_path)
+        updated_rule: Optional[Dict[str, object]] = None
+        for rule in rules:
+            if rule.get("name") == rule_name:
+                if payload.time is not None:
+                    rule["time"] = payload.time
+                if payload.days is not None:
+                    rule["days"] = payload.days
+                updated_rule = rule
+                break
+
+        if updated_rule is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dispatch rule not found")
+
+        _save_dispatch_config(config_path, rules)
+        return JSONResponse({
+            "name": updated_rule.get("name"),
+            "time": updated_rule.get("time"),
+            "days": updated_rule.get("days") or updated_rule.get("weekdays"),
+        })
 
     @app.post("/actions/{date}")
     def handle_action(
@@ -877,6 +1045,210 @@ def create_app() -> FastAPI:
         url = str(request.url_for("dashboard")) + query
         return RedirectResponse(url, status_code=status.HTTP_303_SEE_OTHER)
 
+    # Email Activity API endpoints
+    @app.get("/api/jobs/recent", response_class=JSONResponse)
+    def api_jobs_recent(
+        job_name: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get recent job executions with pagination support."""
+        from app.job_tracker import get_job_tracker
+        tracker = get_job_tracker()
+        
+        # Validate parameters
+        if limit < 1 or limit > 100:
+            limit = 20
+        if offset < 0:
+            offset = 0
+
+        executions = tracker.get_recent_executions(job_name, limit, offset)
+
+        # Convert to dict format for JSON response
+        result = []
+        for execution in executions:
+            exec_dict = execution.to_dict()
+            # Add formatted duration
+            if execution.duration_seconds:
+                exec_dict["duration_formatted"] = f"{execution.duration_seconds:.1f}s"
+            else:
+                exec_dict["duration_formatted"] = None
+            result.append(exec_dict)
+
+        # Calculate pagination metadata
+        total_count = len(tracker.get_recent_executions(job_name, limit=10000))  # Get total count
+        has_more = (offset + limit) < total_count
+
+        return JSONResponse({
+            "executions": result,
+            "pagination": {
+                "offset": offset,
+                "limit": limit,
+                "total": total_count,
+                "has_more": has_more
+            }
+        })
+
+    @app.get("/api/jobs/stats", response_class=JSONResponse)
+    def api_jobs_stats(
+        job_name: Optional[str] = None,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get job execution statistics."""
+        from app.job_tracker import get_job_tracker
+        tracker = get_job_tracker()
+        stats = tracker.get_job_stats(job_name)
+        return JSONResponse(stats)
+
+    @app.post("/api/jobs/run/{job_name}", response_class=JSONResponse)
+    async def api_run_job_manually(
+        job_name: str,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Manually trigger a job execution."""
+        try:
+            cron_runner = await get_cron_runner()
+            result = await cron_runner.run_job_manually(job_name)
+            if result:
+                return JSONResponse({
+                    "success": True,
+                    "message": f"Job {job_name} triggered successfully",
+                    "execution_id": f"{result.job_name}_{result.start_time.isoformat()}"
+                })
+            else:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown job: {job_name}")
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    @app.get("/api/jobs/status", response_class=JSONResponse)
+    async def api_scheduler_status(
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get scheduler status and upcoming jobs."""
+        try:
+            cron_runner = await get_cron_runner()
+            status = cron_runner.get_scheduler_status()
+            return JSONResponse(status)
+        except Exception as e:
+            return JSONResponse({
+                "running": False,
+                "error": str(e),
+                "jobs": []
+            })
+
+    @app.get("/api/jobs/logs/{execution_id}", response_class=JSONResponse)
+    def api_job_logs(
+        execution_id: str,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get detailed logs for a specific job execution."""
+        from app.job_tracker import get_job_tracker
+        tracker = get_job_tracker()
+
+        # Parse execution_id (format: job_name_timestamp)
+        try:
+            parts = execution_id.rsplit("_", 1)
+            if len(parts) != 2:
+                raise ValueError("Invalid execution ID format")
+            job_name = parts[0]
+            timestamp = parts[1]
+
+            # Find the execution
+            executions = tracker.get_recent_executions(job_name, 100)
+            for execution in executions:
+                if execution.start_time.isoformat() == timestamp:
+                    return JSONResponse({
+                        "execution": execution.to_dict(),
+                        "logs": execution.logs
+                    })
+
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Execution not found")
+
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid execution ID: {str(e)}")
+
+    @app.get("/api/state-backup")
+    def api_state_backup(
+        request: Request,
+        settings: AppConfig = Depends(get_config),
+    ) -> Response:
+        """Stream a zip archive of the state/ directory for deployment state restoration.
+
+        Protected by HMAC-SHA256 machine-to-machine auth (see verify_hmac_signature).
+        Controlled by STATE_BACKUP_ENABLED env var — returns 404 when disabled so the
+        endpoint's existence is not confirmed to unauthenticated callers.
+        """
+        from app.security import verify_hmac_signature
+
+        if not settings.state_backup_enabled:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+        if not settings.state_backup_secret:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Backup not configured",
+            )
+
+        verify_hmac_signature(request, settings.state_backup_secret)
+
+        state_dir = PROJECT_ROOT / "state"
+        if not state_dir.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="State directory not found",
+            )
+
+        manifest_files = []
+        zip_buffer = io.BytesIO()
+
+        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for file_path in sorted(state_dir.rglob("*")):
+                if not file_path.is_file():
+                    continue
+                rel = file_path.relative_to(PROJECT_ROOT)
+                archive_path = str(rel)
+                file_bytes = file_path.read_bytes()
+                sha256 = hashlib.sha256(file_bytes).hexdigest()
+                manifest_files.append({
+                    "archive_path": archive_path,
+                    "restore_path": archive_path,
+                    "size_bytes": len(file_bytes),
+                    "sha256": sha256,
+                })
+                zf.writestr(archive_path, file_bytes)
+
+            try:
+                version_result = subprocess.run(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    capture_output=True, text=True,
+                    cwd=PROJECT_ROOT, timeout=5,
+                )
+                server_version = version_result.stdout.strip() if version_result.returncode == 0 else "unknown"
+            except Exception:
+                server_version = "unknown"
+
+            manifest = {
+                "schema_version": "1",
+                "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "server_version": server_version,
+                "files": manifest_files,
+            }
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+
+        zip_buffer.seek(0)
+        zip_bytes = zip_buffer.read()
+
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": "attachment; filename=state-backup.zip",
+                "Content-Length": str(len(zip_bytes)),
+                "X-Manifest-Files": str(len(manifest_files)),
+            },
+        )
+
     return app
 
 
@@ -892,10 +1264,31 @@ def _append_note(current: str, addition: str) -> str:
     return f"{existing} | {addition}"
 
 
-def _resolve_schedule_path(settings: AppConfig) -> Path:
+def _resolve_schedule_path(settings: AppConfig, content_source: Optional[str] = None) -> Path:
     if settings.schedule_file:
         return settings.schedule_file
+    if content_source:
+        # Derive schedule file from content source
+        filename = f"state/{content_source.lower()}_schedule.json"
+        return (Path(os.getcwd()) / filename).resolve()
     return sm.get_schedule_path()
+
+
+def _resolve_dispatch_config_path() -> Path:
+    return job_dispatcher.DEFAULT_CONFIG_PATH
+
+
+def _load_dispatch_config(config_path: Path) -> List[Dict[str, object]]:
+    if config_path.exists():
+        with config_path.open("r", encoding="utf-8") as fh:
+            return json.load(fh)
+    return job_dispatcher.default_rules_config()
+
+
+def _save_dispatch_config(config_path: Path, rules: List[Dict[str, object]]) -> None:
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with config_path.open("w", encoding="utf-8") as fh:
+        json.dump(rules, fh, ensure_ascii=False, indent=2)
 
 
 def _serialize_entry(entry: Optional[sm.ScheduleEntry], date: dt.date) -> Dict[str, object]:
@@ -934,7 +1327,19 @@ def _normalize_week_start(value: Optional[str]) -> dt.date:
 
 def _ensure_week(schedule: sm.Schedule, start: dt.date, schedule_path: Path) -> dt.date:
     end = start + dt.timedelta(days=6)
-    source = content_source_factory.get_active_source()
+    
+    # Determine content source from schedule path
+    schedule_filename = str(schedule_path)
+    if "wix" in schedule_filename.lower():
+        source = content_source_factory.get_content_source("wix")
+    elif "stmn1" in schedule_filename.lower():
+        source = content_source_factory.get_content_source("stmn1")
+    elif "ezoe" in schedule_filename.lower():
+        source = content_source_factory.get_content_source("ezoe")
+    else:
+        # Fallback to active source if filename doesn't match any known content source
+        source = content_source_factory.get_active_source()
+    
     if sm.ensure_date_range(schedule, source, start, end):
         sm.save_schedule(schedule, schedule_path)
     return end
@@ -948,3 +1353,26 @@ def _get_month_end(year: int, month: int) -> dt.date:
 
 
 app = create_app()
+
+
+# Add startup and shutdown events for cron runner
+@app.on_event("startup")
+async def startup_event():
+    """Initialize cron runner and caffeine mode on app startup."""
+    try:
+        cron_runner = await get_cron_runner()
+        # Cron runner starts automatically in get_cron_runner()
+        
+        # Start caffeine mode in background
+        asyncio.create_task(start_caffeine_mode())
+    except Exception as e:
+        print(f"Warning: Failed to start background services: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown cron runner on app shutdown."""
+    try:
+        await shutdown_cron_runner()
+    except Exception as e:
+        print(f"Warning: Failed to shutdown cron runner: {e}")
