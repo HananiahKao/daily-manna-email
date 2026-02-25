@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import io
 from pathlib import Path
 import subprocess
 import sys
@@ -10,6 +12,7 @@ from typing import Dict, List, Optional
 from urllib.parse import urlencode
 import os
 import json
+import zipfile
 import requests
 import asyncio
 
@@ -1164,6 +1167,87 @@ def create_app() -> FastAPI:
 
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid execution ID: {str(e)}")
+
+    @app.get("/api/state-backup")
+    def api_state_backup(
+        request: Request,
+        settings: AppConfig = Depends(get_config),
+    ) -> Response:
+        """Stream a zip archive of the state/ directory for deployment state restoration.
+
+        Protected by HMAC-SHA256 machine-to-machine auth (see verify_hmac_signature).
+        Controlled by STATE_BACKUP_ENABLED env var — returns 404 when disabled so the
+        endpoint's existence is not confirmed to unauthenticated callers.
+        """
+        from app.security import verify_hmac_signature
+
+        if not settings.state_backup_enabled:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+        if not settings.state_backup_secret:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Backup not configured",
+            )
+
+        verify_hmac_signature(request, settings.state_backup_secret)
+
+        state_dir = PROJECT_ROOT / "state"
+        if not state_dir.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="State directory not found",
+            )
+
+        manifest_files = []
+        zip_buffer = io.BytesIO()
+
+        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for file_path in sorted(state_dir.rglob("*")):
+                if not file_path.is_file():
+                    continue
+                rel = file_path.relative_to(PROJECT_ROOT)
+                archive_path = str(rel)
+                file_bytes = file_path.read_bytes()
+                sha256 = hashlib.sha256(file_bytes).hexdigest()
+                manifest_files.append({
+                    "archive_path": archive_path,
+                    "restore_path": archive_path,
+                    "size_bytes": len(file_bytes),
+                    "sha256": sha256,
+                })
+                zf.writestr(archive_path, file_bytes)
+
+            try:
+                version_result = subprocess.run(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    capture_output=True, text=True,
+                    cwd=PROJECT_ROOT, timeout=5,
+                )
+                server_version = version_result.stdout.strip() if version_result.returncode == 0 else "unknown"
+            except Exception:
+                server_version = "unknown"
+
+            manifest = {
+                "schema_version": "1",
+                "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "server_version": server_version,
+                "files": manifest_files,
+            }
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+
+        zip_buffer.seek(0)
+        zip_bytes = zip_buffer.read()
+
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": "attachment; filename=state-backup.zip",
+                "Content-Length": str(len(zip_bytes)),
+                "X-Manifest-Files": str(len(manifest_files)),
+            },
+        )
 
     return app
 

@@ -17,6 +17,8 @@ class AppConfig:
     oauth_encryption_key: str | None = None
     caffeine_mode: bool = False
     caffeine_interval: int = 600  # 10 minutes in seconds
+    state_backup_enabled: bool = False
+    state_backup_secret: str | None = None
 
 
 @lru_cache(maxsize=1)
@@ -43,6 +45,9 @@ def get_config() -> AppConfig:
     except (TypeError, ValueError):
         caffeine_interval = 600  # Fallback to default if invalid
     
+    state_backup_enabled = os.getenv("STATE_BACKUP_ENABLED", "0").lower() in ("1", "true", "on", "yes")
+    state_backup_secret = os.getenv("STATE_BACKUP_SECRET")
+
     return AppConfig(
         admin_user=admin_user,
         admin_password=admin_password,
@@ -51,4 +56,6 @@ def get_config() -> AppConfig:
         oauth_encryption_key=oauth_encryption_key,
         caffeine_mode=caffeine_mode,
         caffeine_interval=caffeine_interval,
+        state_backup_enabled=state_backup_enabled,
+        state_backup_secret=state_backup_secret,
     )
