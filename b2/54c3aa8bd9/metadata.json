@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "b254c3aa8bd9",
+  "strategy": "manual-commit",
+  "branch": "feature/email-activity-dashboard",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/main.py",
+    "tests/test_dashboard.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b2/54c3aa8bd9/0/metadata.json",
+      "transcript": "/b2/54c3aa8bd9/0/full.jsonl",
+      "context": "/b2/54c3aa8bd9/0/context.md",
+      "content_hash": "/b2/54c3aa8bd9/0/content_hash.txt",
+      "prompt": "/b2/54c3aa8bd9/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 64,
+    "cache_creation_tokens": 68354,
+    "cache_read_tokens": 1735410,
+    "output_tokens": 146,
+    "api_call_count": 29
+  }
+}
