@@ -1,0 +1,30 @@
+because of the current free render.com deployment environment, our Thank you. I want a feature that can first add an endpoint to the first production and gain research for render.com's deployment pipeline. I think there is a non-stop code like a non-interruption deployment pipeline which when a server is building the current production service is still running and once the server is built and deployed successfully then the current production service will be replaced and during this, the file system is swiped so the customer data on our prediction server is swiped. I don't want this, I want an invariable variable mode which will affect the build process so make a build script for us. The current build command is pip install -r requirements.txt because it's just a Python application we don't require to build anything. So please introduce a plan for a mode. Please introduce an environment which toggles a mode off. In the build process, we will get to an endpoint and download the zip of all the state files which are in the state directory (which are our project structure currently established) and with a manifest file that describes everything inside the zip. So when I unzip it we can exactly know which file to place where and the details of them. But I want to make this extra structure secure because I don't want any impersonating on our service because this GitHub repository is public and anyone can get our code if they if this endpoint of getting a zip file for the state isn't protected. So I want an extra secure layer (not like our login and session management). I want an extra layer of security but I don't know how to implement it. Can you just draft some implementations for what I want to do?
+
+---
+
+Option
+Pros
+Notes
+STATE_SOURCE_URL
+Clearly indicates it’s the source for state restore
+Explicit and descriptive
+UPSTREAM_URL
+Generic, indicates it’s a higher-level instance
+Common in CI/CD, but less explicit about state
+BACKUP_SERVER_URL
+Emphasizes that it’s the server we pull backups from
+Makes it clear it’s not the “production” URL for deployment
+REFERENCE_INSTANCE_URL
+Indicates it’s another running instance we reference
+Very descriptive, but a bit long
+RESTORE_SOURCE_URL
+Focuses on the restore purpose
+Directly tied to this script’s logic
+REMOTE_STATE_URLEmphasizes remote fetch of state
+Short and clear, hints at location
+
+These are some suggested names from coding models, so can you choose another name instead of production_url? It's not really production, it's just a server that we fetch to, which is where the build will replace.
+
+---
+
+commit the changes, and use the provided service url to chnage the env var for this service.
