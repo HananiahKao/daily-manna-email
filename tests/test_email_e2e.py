@@ -119,8 +119,7 @@ def test_email_pipeline_e2e_ezoe_mode(monkeypatch, fs):
     # Patch the module-level variable directly
     with patch.object(sjzl, "get_gmail_service", mock_get_gmail), \
          patch.object(sjzl, "find_latest_lesson"), \
-         patch("content_source_factory.get_active_source", return_value=mock_source), \
-         patch.object(sjzl, "EZOe_SELECTOR", "2-1-3"):
+         patch("content_source_factory.get_active_source", return_value=mock_source):
         
         # Execute the full pipeline
         result = sjzl.run_once()
