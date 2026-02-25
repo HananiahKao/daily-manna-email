@@ -711,10 +711,12 @@ def create_app() -> FastAPI:
     def api_move_entry(
         date: dt.date,
         payload: EntryMovePayload,
+        request: Request,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
         entry = schedule.get_entry(date)
         if not entry:
@@ -730,10 +732,12 @@ def create_app() -> FastAPI:
     @app.post("/api/entries/move", response_class=JSONResponse)
     def api_move_entries(
         payload: MultiMovePayload,
+        request: Request,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
         entry_map: Dict[dt.date, sm.ScheduleEntry] = {}
         for date_value in payload.source_dates:
