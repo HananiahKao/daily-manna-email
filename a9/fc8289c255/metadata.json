@@ -3,7 +3,7 @@
   "checkpoint_id": "a9fc8289c255",
   "strategy": "manual-commit",
   "branch": "feature/email-activity-dashboard",
-  "checkpoints_count": 2,
+  "checkpoints_count": 4,
   "files_touched": [
     "tests/test_email_e2e.py"
   ],
@@ -21,13 +21,20 @@
       "context": "/a9/fc8289c255/1/context.md",
       "content_hash": "/a9/fc8289c255/1/content_hash.txt",
       "prompt": "/a9/fc8289c255/1/prompt.txt"
+    },
+    {
+      "metadata": "/a9/fc8289c255/2/metadata.json",
+      "transcript": "/a9/fc8289c255/2/full.jsonl",
+      "context": "/a9/fc8289c255/2/context.md",
+      "content_hash": "/a9/fc8289c255/2/content_hash.txt",
+      "prompt": "/a9/fc8289c255/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 64,
-    "cache_creation_tokens": 68354,
-    "cache_read_tokens": 1735410,
-    "output_tokens": 146,
-    "api_call_count": 29
+    "input_tokens": 139,
+    "cache_creation_tokens": 216991,
+    "cache_read_tokens": 4332641,
+    "output_tokens": 651,
+    "api_call_count": 76
   }
 }
