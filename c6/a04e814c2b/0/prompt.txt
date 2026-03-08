@@ -1,0 +1,24 @@
+use the browser tool to open the HTTPS column /dashboard.render.REDACTED.
+Then configure the web service on that page. You may need to log in. You can ask me to log in, configure the webpage to configure the web service to use the current branch in the current working environment of yours, and go to the pull request URL I will paste under. Write a PR comment stating that you can see the context about it. It's about the test session started on that current branch on the specific URL of the web service, so please write it.
+Go to the environment tab and the dashboard.render.com URL that I've described, and change the email to section to include:
+- tallfat@gmail.com
+- flying sale@gmail.com
+- flying cell 318@gmail.com
+separated by column. You can see the specification in the current working directory, the readme or other document files. There's some misspelling, so first is tallfat and flying sails at gmail.com at 318. Sorry, so that's one email, flying sale 318 at gmail.com, with no spaces. 
+flyingsail318@gmail.com
+
+---
+
+I've loged in.
+
+---
+
+[Request interrupted by user]
+
+---
+
+you'll need to append the two emails instead of replacing the two emails with the original email, so please prepend or append the original email if you see it. Instead of replacing it
+
+---
+
+https://github.com/HananiahKao/daily-manna-email/pull/3
