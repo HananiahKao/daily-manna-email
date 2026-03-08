@@ -392,6 +392,87 @@ def test_move_respects_content_source_header(monkeypatch, tmp_path):
     assert unchanged_ezoe.get_entry(thursday).selector == "ezoe-thu"
 
 
+def test_delete_respects_content_source_header(monkeypatch, tmp_path):
+    """Regression: single delete must target the selected content-source schedule."""
+    get_config.cache_clear()  # type: ignore[attr-defined]
+    monkeypatch.setenv("ADMIN_DASHBOARD_PASSWORD", "secret")
+    monkeypatch.setenv("ADMIN_DASHBOARD_USER", "admin")
+    monkeypatch.delenv("SCHEDULE_FILE", raising=False)  # enable content-source routing
+    monkeypatch.chdir(tmp_path)
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+
+    target_date = dt.date(2025, 1, 7)
+    wix_schedule = sm.Schedule(entries=[sm.ScheduleEntry(date=target_date, selector="wix-entry")])
+    ezoe_schedule = sm.Schedule(entries=[sm.ScheduleEntry(date=target_date, selector="ezoe-entry")])
+    sm.save_schedule(wix_schedule, state_dir / "wix_schedule.json")
+    sm.save_schedule(ezoe_schedule, state_dir / "ezoe_schedule.json")
+
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.delete(
+        f"/api/entry/{target_date.isoformat()}",
+        headers={**_auth_header(), "X-Content-Source": "wix"},
+    )
+    assert response.status_code == 200, response.json()
+
+    updated_wix = sm.load_schedule(state_dir / "wix_schedule.json")
+    unchanged_ezoe = sm.load_schedule(state_dir / "ezoe_schedule.json")
+    assert updated_wix.get_entry(target_date) is None
+    assert unchanged_ezoe.get_entry(target_date) is not None
+    assert unchanged_ezoe.get_entry(target_date).selector == "ezoe-entry"
+
+
+def test_batch_delete_respects_content_source_header(monkeypatch, tmp_path):
+    """Regression: batch delete must target the selected content-source schedule."""
+    get_config.cache_clear()  # type: ignore[attr-defined]
+    monkeypatch.setenv("ADMIN_DASHBOARD_PASSWORD", "secret")
+    monkeypatch.setenv("ADMIN_DASHBOARD_USER", "admin")
+    monkeypatch.delenv("SCHEDULE_FILE", raising=False)  # enable content-source routing
+    monkeypatch.chdir(tmp_path)
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+
+    day1 = dt.date(2025, 1, 7)
+    day2 = dt.date(2025, 1, 8)
+    day3 = dt.date(2025, 1, 9)
+
+    wix_schedule = sm.Schedule(entries=[
+        sm.ScheduleEntry(date=day1, selector="wix-1"),
+        sm.ScheduleEntry(date=day2, selector="wix-2"),
+        sm.ScheduleEntry(date=day3, selector="wix-3"),
+    ])
+    ezoe_schedule = sm.Schedule(entries=[
+        sm.ScheduleEntry(date=day1, selector="ezoe-1"),
+        sm.ScheduleEntry(date=day2, selector="ezoe-2"),
+        sm.ScheduleEntry(date=day3, selector="ezoe-3"),
+    ])
+    sm.save_schedule(wix_schedule, state_dir / "wix_schedule.json")
+    sm.save_schedule(ezoe_schedule, state_dir / "ezoe_schedule.json")
+
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/entries/batch-delete",
+        headers={**_auth_header(), "X-Content-Source": "wix"},
+        json=[day1.isoformat(), day2.isoformat()],
+    )
+    assert response.status_code == 200, response.json()
+
+    updated_wix = sm.load_schedule(state_dir / "wix_schedule.json")
+    unchanged_ezoe = sm.load_schedule(state_dir / "ezoe_schedule.json")
+    assert updated_wix.get_entry(day1) is None
+    assert updated_wix.get_entry(day2) is None
+    assert updated_wix.get_entry(day3) is not None
+    assert unchanged_ezoe.get_entry(day1) is not None
+    assert unchanged_ezoe.get_entry(day2) is not None
+    assert unchanged_ezoe.get_entry(day3) is not None
+
+
 def test_batch_update_entries_api(dashboard_client):
     """Test batch updating multiple entries."""
     client, schedule_path, base_date = dashboard_client

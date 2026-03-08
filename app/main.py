@@ -699,10 +699,12 @@ def create_app() -> FastAPI:
     @app.delete("/api/entry/{date}", response_class=JSONResponse)
     def api_delete_entry(
         date: dt.date,
+        request: Request,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
         removed = schedule.remove_entry(date)
         if not removed:
@@ -886,13 +888,15 @@ def create_app() -> FastAPI:
     @app.post("/api/entries/batch-delete", response_class=JSONResponse)
     def api_batch_delete_entries(
         dates: List[dt.date],
+        request: Request,
         _: str = Depends(require_user),
         settings: AppConfig = Depends(get_config),
     ) -> JSONResponse:
         """
         Delete multiple schedule entries by dates.
         """
-        schedule_path = _resolve_schedule_path(settings)
+        content_source = request.headers.get("X-Content-Source")
+        schedule_path = _resolve_schedule_path(settings, content_source)
         schedule = sm.load_schedule(schedule_path)
 
         deleted_dates = []
