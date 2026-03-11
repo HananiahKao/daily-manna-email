@@ -111,7 +111,8 @@ fi
 echo "[build] Backup downloaded (HTTP $HTTP_STATUS). Validating and extracting..."
 
 # Validate SHA-256 hashes for all files, then extract.
-# Path traversal guard: only paths starting with "state/" are permitted.
+# Path traversal guard: only paths starting with "state/" are permitted,
+# plus explicitly allowed config files.
 "$PYTHON_BIN" - <<PYEOF
 import hashlib, json, os, sys, zipfile
 from pathlib import Path
@@ -161,7 +162,13 @@ try:
 
             # Path traversal guard
             norm = os.path.normpath(restore_path)
-            if norm.startswith("..") or not norm.startswith("state"):
+            allowed_extra = {
+                "config/dispatch_rules.json",
+            }
+            if norm.startswith(".."):
+                print(f"[build] WARNING: Skipping {restore_path!r} — unsafe path, ignoring.")
+                continue
+            if not norm.startswith("state") and norm not in allowed_extra:
                 print(f"[build] WARNING: Skipping {restore_path!r} — unsafe path, ignoring.")
                 continue
 

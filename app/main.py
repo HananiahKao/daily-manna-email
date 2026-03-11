@@ -1207,7 +1207,13 @@ def create_app() -> FastAPI:
         zip_buffer = io.BytesIO()
 
         with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for file_path in sorted(state_dir.rglob("*")):
+            file_candidates = list(sorted(state_dir.rglob("*")))
+            extra_paths = [
+                PROJECT_ROOT / "config" / "dispatch_rules.json",
+            ]
+            file_candidates.extend(extra_paths)
+
+            for file_path in file_candidates:
                 if not file_path.is_file():
                     continue
                 rel = file_path.relative_to(PROJECT_ROOT)
