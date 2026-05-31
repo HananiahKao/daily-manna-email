@@ -3,7 +3,7 @@
   "checkpoint_id": "610f90bbb423",
   "strategy": "manual-commit",
   "branch": "feature/email-activity-dashboard",
-  "checkpoints_count": 1,
+  "checkpoints_count": 7,
   "files_touched": [
     "sjzl_daily_email.py",
     "tests/test_sjzl_daily_email.py"
@@ -15,6 +15,20 @@
       "context": "",
       "content_hash": "/61/0f90bbb423/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/61/0f90bbb423/1/metadata.json",
+      "transcript": "/61/0f90bbb423/1/full.jsonl",
+      "context": "/61/0f90bbb423/1/context.md",
+      "content_hash": "/61/0f90bbb423/1/content_hash.txt",
+      "prompt": "/61/0f90bbb423/1/prompt.txt"
     }
-  ]
+  ],
+  "token_usage": {
+    "input_tokens": 3838,
+    "cache_creation_tokens": 744724,
+    "cache_read_tokens": 27929568,
+    "output_tokens": 125969,
+    "api_call_count": 245
+  }
 }
