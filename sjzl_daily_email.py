@@ -31,7 +31,7 @@ from email.header import Header
 from email.utils import formataddr
 from email import encoders
 from email.charset import Charset, QP
-from typing import Optional, Tuple, List, Optional as TypingOptional, cast
+from typing import Optional, Tuple, List, Dict, Optional as TypingOptional, cast
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -445,16 +445,19 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
 
 # -------- Email sending --------
 
-def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, content_source: TypingOptional[str] = None) -> List[str]:
+def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, content_source: TypingOptional[str] = None) -> Dict[str, str]:
     """
     Send email using Gmail API to each recipient individually.
-    Returns the list of recipients the email was sent to.
+    Returns a dictionary mapping recipient emails to their Gmail message IDs.
 
     Args:
         subject: Email subject
         body: Plain text email body
         html_body: Optional HTML email body
         content_source: Content source ('ezoe' or 'wix') to determine recipients from database
+
+    Returns:
+        Dict[str, str]: {recipient_email: gmail_message_id} for successfully sent emails
     """
     email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
 
@@ -493,7 +496,7 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
 
     try:
         service = get_gmail_service()
-        sent_count = 0
+        sent_messages: Dict[str, str] = {}  # {recipient: gmail_message_id}
 
         # Send individual email to each recipient
         for recipient in recipients:
@@ -521,19 +524,20 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
                     'raw': raw_message
                 }
                 sent_message = service.users().messages().send(userId='me', body=message).execute()
-                sent_count += 1
-                logger.info("Email sent to %s, message ID: %s", recipient, sent_message.get('id'))
+                message_id = sent_message.get('id')
+                sent_messages[recipient] = message_id
+                logger.info("Email sent to %s, message ID: %s", recipient, message_id)
             except Exception as e:
                 logger.error("Failed to send email to %s: %s", recipient, e)
                 # Continue with other recipients even if one fails
 
-        logger.info("Email sent successfully to %d out of %d recipients", sent_count, len(recipients))
+        logger.info("Email sent successfully to %d out of %d recipients", len(sent_messages), len(recipients))
 
     except Exception as e:
         logger.error("Failed to send emails via Gmail API: %s", e)
         raise
 
-    return recipients
+    return sent_messages
 
 
 # -------- Main job --------
@@ -704,7 +708,7 @@ def run_once() -> int:
         html_with_css = _maybe_convert_zh_cn_to_zh_tw(html_with_css)
         body = _maybe_convert_zh_cn_to_zh_tw(body)
         recipients = send_email(subject, body, html_body=html_with_css, content_source=active_source.get_source_name())
-        logger.info("HTML email (ezoe) sent to %s", ", ".join(recipients))
+        logger.info("HTML email (ezoe) sent to %s", ", ".join(recipients.keys()))
         return 0
     # Allow override for testing SMTP without discovery/fetch variability
     test_url = os.getenv("TEST_LESSON_URL")
@@ -755,7 +759,7 @@ def run_once() -> int:
     _debug_preview("SJZL_BODY", body)
 
     recipients = send_email(subject, body, html_body=html_body, content_source="ezoe")
-    logger.info("Email sent to %s", ", ".join(recipients))
+    logger.info("Email sent to %s", ", ".join(recipients.keys()))
     return 0
 
 

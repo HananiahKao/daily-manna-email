@@ -296,13 +296,21 @@ def test_send_email_recipient_source_db(mock_get_subscribers, mock_gmail, monkey
     # Mock subscribers
     mock_get_subscribers.return_value = ["subscriber1@example.com", "subscriber2@example.com"]
 
-    # Mock Gmail service
+    # Mock Gmail service to return message IDs
     mock_service = MagicMock()
     mock_gmail.return_value = mock_service
+    mock_service.users().messages().send().execute.side_effect = [
+        {"id": "msg_id_1"},
+        {"id": "msg_id_2"}
+    ]
 
     recipients = sjzl.send_email("Test Subject", "Test Body", content_source="stmn1")
 
-    assert recipients == ["subscriber1@example.com", "subscriber2@example.com"]
+    # Now returns a dict of {recipient: message_id}
+    assert recipients == {
+        "subscriber1@example.com": "msg_id_1",
+        "subscriber2@example.com": "msg_id_2"
+    }
     mock_get_subscribers.assert_called_once_with("stmn1")
 
 
