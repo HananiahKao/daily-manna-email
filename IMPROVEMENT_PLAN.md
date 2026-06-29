@@ -11,12 +11,12 @@
 ### Phase 1: Delivery Reliability (June) — P=1, S=1
 - [x] **1.1.1** Commit 1: Capture Gmail message IDs ✅ DONE
 - [x] **1.1.2** Commit 2: Store message IDs with delivery tracking ✅ DONE
-- [ ] **1.1.3** Commit 3: Add Gmail recovery logic on startup
+- [x] **1.1.3** Commit 3: Add Gmail recovery logic on startup ✅ DONE
 - [ ] **1.1.4** Commit 4: Integration test for recovery
 - [ ] **1.2** Remove email addresses from logs (privacy fix)
 - [ ] **1.3** Add JSON schema validation for dispatch rules
 
-**Phase 1 Progress:** 2/6 tasks complete (33%)
+**Phase 1 Progress:** 3/6 tasks complete (50%)
 
 ### Phase 2: Subscriber Database Integration (July) — P=1, S=2
 - [ ] **2.1** Migrate from EMAIL_TO env var to database
@@ -42,7 +42,7 @@
 
 ---
 
-**Overall Progress:** 2/16 tasks complete (12%) | ⏳ In Active Development
+**Overall Progress:** 3/16 tasks complete (19%) | ⏳ In Active Development
 
 ---
 
@@ -83,12 +83,16 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 - 358 tests pass; includes 3 new integration tests for recovery scenarios
 - **Git:** `17e7ff7 ✨ feat(send): idempotent delivery tracking`
 
-**Commit 3:** Add Gmail Recovery Logic on Startup
-- On restart, for each recipient without a record:
+**Commit 3** ✅ **DONE**: Add Gmail Recovery Logic on Startup
+- New module `gmail_recovery.py` queries Gmail sent folder to backfill missing records
+- On startup, for each recipient without a record:
   - Query Gmail Sent folder: "Do I have a message to this recipient today?"
-  - If YES: backfill the missing record (system crashed mid-batch)
-  - If NO: send normally
+  - If YES: backfill the missing record (system crashed mid-batch, record not written)
+  - If NO: send normally (never sent or already handled)
+- Graceful error handling: if Gmail query fails, proceeds with normal send
 - Prevents duplicates from crash-recovery restarts
+- 373 tests pass; includes 9 comprehensive recovery tests
+- **Git:** `786f018 ✨ feat(send): gmail recovery on startup`
 
 **Commit 4:** Integration Test for Recovery
 - Simulate crash mid-batch (send to Alice & Bob, crash before recording)
