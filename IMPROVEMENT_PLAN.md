@@ -10,13 +10,13 @@
 
 ### Phase 1: Delivery Reliability (June) — P=1, S=1
 - [x] **1.1.1** Commit 1: Capture Gmail message IDs ✅ DONE
-- [ ] **1.1.2** Commit 2: Store message IDs in schedule JSON
+- [x] **1.1.2** Commit 2: Store message IDs with delivery tracking ✅ DONE
 - [ ] **1.1.3** Commit 3: Add Gmail recovery logic on startup
 - [ ] **1.1.4** Commit 4: Integration test for recovery
 - [ ] **1.2** Remove email addresses from logs (privacy fix)
 - [ ] **1.3** Add JSON schema validation for dispatch rules
 
-**Phase 1 Progress:** 1/6 tasks complete (17%)
+**Phase 1 Progress:** 2/6 tasks complete (33%)
 
 ### Phase 2: Subscriber Database Integration (July) — P=1, S=2
 - [ ] **2.1** Migrate from EMAIL_TO env var to database
@@ -42,7 +42,7 @@
 
 ---
 
-**Overall Progress:** 1/16 tasks complete (6%) | ⏳ In Active Development
+**Overall Progress:** 2/16 tasks complete (12%) | ⏳ In Active Development
 
 ---
 
@@ -74,11 +74,14 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 - All 341 tests pass
 - **Git:** `0c3deef ✨ feat(send): capture Gmail message IDs`
 
-**Commit 2** (NEXT): Store Message IDs in Schedule JSON
-- Write message ID + timestamp per recipient on successful send
-- Structure: `deliveries/{recipient}@{date} → {gmail_message_id, sent_at}`
-- Idempotent writes (safe to retry without duplicates)
-- Check before sending: if record exists → skip (already sent)
+**Commit 2** ✅ **DONE**: Store Message IDs with Idempotent Tracking
+- New module `delivery_tracker.py` manages per-recipient delivery records
+- Stores message IDs and timestamps in `state/deliveries.json` (separate from schedule)
+- Filters recipients before sending: skips if already delivered today
+- Records deliveries immediately after successful send (idempotent)
+- Enables crash recovery: restarting won't duplicate emails
+- 358 tests pass; includes 3 new integration tests for recovery scenarios
+- **Git:** `17e7ff7 ✨ feat(send): idempotent delivery tracking`
 
 **Commit 3:** Add Gmail Recovery Logic on Startup
 - On restart, for each recipient without a record:
