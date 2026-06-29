@@ -36,6 +36,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+import delivery_tracker
 
 # -------- CSS extraction for ezoe mode --------
 
@@ -448,6 +449,7 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
 def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, content_source: TypingOptional[str] = None) -> Dict[str, str]:
     """
     Send email using Gmail API to each recipient individually.
+    Skips recipients already sent to today (idempotent recovery).
     Returns a dictionary mapping recipient emails to their Gmail message IDs.
 
     Args:
@@ -460,6 +462,7 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
         Dict[str, str]: {recipient_email: gmail_message_id} for successfully sent emails
     """
     email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
+    today = dt.date.today()
 
     # Debug mode: send to EMAIL_FROM instead of subscribers
     debug_mode = os.getenv("DEBUG_MODE") not in (None, "", "0", "false", "False")
@@ -468,7 +471,7 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
     else:
         # Get recipient source configuration
         recipient_source = os.getenv("RECIPIENT_SOURCE", "email").strip().lower()
-        
+
         if recipient_source == "email":
             # Case A: RECIPIENT_SOURCE=email - Exclusively use EMAIL_TO
             email_to_raw = os.getenv("EMAIL_TO", "")
@@ -494,12 +497,21 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
     if not recipients:
         raise ValueError("No recipients configured.")
 
+    # Filter out already-delivered recipients for idempotent recovery
+    recipients_to_send = delivery_tracker.get_missing_recipients(recipients, today)
+
+    if recipients_to_send:
+        logger.info("Sending to %d recipients (skipped %d already delivered today)",
+                   len(recipients_to_send), len(recipients) - len(recipients_to_send))
+    else:
+        logger.info("All %d recipients already delivered today, skipping send", len(recipients))
+
     try:
         service = get_gmail_service()
         sent_messages: Dict[str, str] = {}  # {recipient: gmail_message_id}
 
-        # Send individual email to each recipient
-        for recipient in recipients:
+        # Send individual email to each missing recipient
+        for recipient in recipients_to_send:
             # Create message for this individual recipient
             msg = MIMEMultipart("alternative")
             msg["From"] = email_from
@@ -526,12 +538,15 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
                 sent_message = service.users().messages().send(userId='me', body=message).execute()
                 message_id = sent_message.get('id')
                 sent_messages[recipient] = message_id
+
+                # Record delivery immediately after successful send (idempotent)
+                delivery_tracker.record_delivery(recipient, today, message_id)
                 logger.info("Email sent to %s, message ID: %s", recipient, message_id)
             except Exception as e:
                 logger.error("Failed to send email to %s: %s", recipient, e)
                 # Continue with other recipients even if one fails
 
-        logger.info("Email sent successfully to %d out of %d recipients", len(sent_messages), len(recipients))
+        logger.info("Email sent successfully to %d out of %d recipients", len(sent_messages), len(recipients_to_send))
 
     except Exception as e:
         logger.error("Failed to send emails via Gmail API: %s", e)
