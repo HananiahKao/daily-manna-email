@@ -37,6 +37,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 import delivery_tracker
+import gmail_recovery
 
 # -------- CSS extraction for ezoe mode --------
 
@@ -496,6 +497,9 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
 
     if not recipients:
         raise ValueError("No recipients configured.")
+
+    # Backfill any missing delivery records from Gmail (crash recovery)
+    gmail_recovery.ensure_no_duplicates_on_startup(recipients, today)
 
     # Filter out already-delivered recipients for idempotent recovery
     recipients_to_send = delivery_tracker.get_missing_recipients(recipients, today)
