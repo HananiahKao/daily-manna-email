@@ -3,7 +3,7 @@
   "checkpoint_id": "328a2366b4eb",
   "strategy": "manual-commit",
   "branch": "feature/email-activity-dashboard",
-  "checkpoints_count": 1,
+  "checkpoints_count": 4,
   "files_touched": [
     "CLAUDE.md",
     "IMPROVEMENT_PLAN.md",
@@ -16,6 +16,20 @@
       "context": "",
       "content_hash": "/32/8a2366b4eb/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/32/8a2366b4eb/1/metadata.json",
+      "transcript": "/32/8a2366b4eb/1/full.jsonl",
+      "context": "/32/8a2366b4eb/1/context.md",
+      "content_hash": "/32/8a2366b4eb/1/content_hash.txt",
+      "prompt": "/32/8a2366b4eb/1/prompt.txt"
     }
-  ]
+  ],
+  "token_usage": {
+    "input_tokens": 4154,
+    "cache_creation_tokens": 936073,
+    "cache_read_tokens": 34367079,
+    "output_tokens": 140918,
+    "api_call_count": 284
+  }
 }
