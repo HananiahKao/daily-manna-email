@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "328a2366b4eb",
+  "session_id": "89b2f2d8-9a85-4c01-907e-09a6ab9778e9",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-29T06:19:57.564642Z",
+  "branch": "feature/email-activity-dashboard",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "CLAUDE.md",
+    "IMPROVEMENT_PLAN.md",
+    "docs/CODEBASE_ARCHITECTURE_ANALYSIS.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "1ccb8dd44a0b",
+  "transcript_identifier_at_start": "20d3b0de-b268-44f5-af70-826ea3e9b1be",
+  "initial_attribution": {
+    "calculated_at": "2026-06-29T06:19:57.557881Z",
+    "agent_lines": 455,
+    "human_added": 2210,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2665,
+    "agent_percentage": 17.073170731707318
+  },
+  "transcript_path": ".claude/projects/-Users-hananiah-Developer-daily-manna-email/89b2f2d8-9a85-4c01-907e-09a6ab9778e9.jsonl"
+}
