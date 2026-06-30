@@ -1398,6 +1398,103 @@ def create_app() -> FastAPI:
                 "message": f"Subscriber {subscriber_id} deleted"
             })
 
+    @app.post("/api/public/subscribe", response_class=JSONResponse)
+    async def api_public_subscribe(request: Request) -> JSONResponse:
+        """Public self-service subscription endpoint (no authentication required)."""
+        from app.subscriber_manager import add_subscriber, SubscriberError
+
+        try:
+            data = await request.json()
+        except:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON payload"
+            )
+
+        email = data.get("email", "").strip()
+        content_source = data.get("content_source", "").strip()
+
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="email is required"
+            )
+
+        if not content_source:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="content_source is required"
+            )
+
+        try:
+            subscriber = add_subscriber(email, content_source)
+            return JSONResponse({
+                "success": True,
+                "message": f"Successfully subscribed to {content_source}",
+                "subscriber_id": subscriber.id
+            }, status_code=201)
+        except SubscriberError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error subscribing: {str(e)}"
+            )
+
+    @app.post("/api/public/unsubscribe", response_class=JSONResponse)
+    async def api_public_unsubscribe(request: Request) -> JSONResponse:
+        """Public self-service unsubscribe endpoint (no authentication required)."""
+        from app.subscriber_manager import remove_subscriber, SubscriberError
+
+        try:
+            data = await request.json()
+        except:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON payload"
+            )
+
+        email = data.get("email", "").strip()
+        content_source = data.get("content_source", "").strip()
+
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="email is required"
+            )
+
+        if not content_source:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="content_source is required"
+            )
+
+        try:
+            removed = remove_subscriber(email, content_source)
+            if removed:
+                return JSONResponse({
+                    "success": True,
+                    "message": f"Successfully unsubscribed from {content_source}"
+                })
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Subscriber not found"
+                )
+        except SubscriberError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error unsubscribing: {str(e)}"
+            )
+
     return app
 
 
