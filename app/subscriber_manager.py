@@ -15,6 +15,7 @@ from .database import initialize_database
 from .email_encryption import decrypt_email, encrypt_email, validate_email_format
 from .models import Subscriber, get_db_session
 from .token_encryption import TokenEncryptionError
+import content_source_factory
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ def add_subscriber(email: str, content_source: str) -> Subscriber:
     if not validate_email_format(email):
         raise SubscriberError("Invalid email format")
 
-    if content_source not in ("ezoe", "wix"):
+    if content_source not in content_source_factory.get_available_sources():
         raise SubscriberError(f"Invalid content source: {content_source}")
 
     _ensure_database_initialized()
@@ -136,7 +137,7 @@ def remove_subscriber(email: str, content_source: str) -> bool:
     Raises:
         SubscriberError: If database error occurs
     """
-    if content_source not in ("ezoe", "wix"):
+    if content_source not in content_source_factory.get_available_sources():
         raise SubscriberError(f"Invalid content source: {content_source}")
 
     _ensure_database_initialized()
@@ -182,7 +183,7 @@ def get_subscribers(content_source: str) -> List[str]:
     Raises:
         SubscriberError: If database error occurs
     """
-    if content_source not in ("ezoe", "wix"):
+    if content_source not in content_source_factory.get_available_sources():
         raise SubscriberError(f"Invalid content source: {content_source}")
 
     _ensure_database_initialized()
