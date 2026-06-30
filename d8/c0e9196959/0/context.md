@@ -107,3 +107,7 @@ How will you do the integration test?
 
 Ok. go with this approch
 
+### Prompt 23
+
+So, Phase 1: what we are left with from Phase 1. I want to talk about it because I have no practical way to test this in real conditions. It is just a theoretical thing. I haven't experienced it in any deploy, so I'm a little doubtful about whether we actually completed it or not. Based on the progress, we did complete it, but I don't know if it's working correctly.
+
