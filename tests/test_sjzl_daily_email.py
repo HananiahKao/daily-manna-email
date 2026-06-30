@@ -112,6 +112,7 @@ def test_send_email_starttls(mock_smtp, mock_gmail, monkeypatch):
     monkeypatch.setenv("SMTP_PORT", "587")
     monkeypatch.setenv("SMTP_USER", "user@example.com")
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.setenv("EMAIL_TO", "to@example.com")
     monkeypatch.setenv("TLS_MODE", "starttls")
 
@@ -133,6 +134,7 @@ def test_send_email_ssl_with_html(mock_smtp_ssl, mock_gmail, monkeypatch):
     monkeypatch.setenv("SMTP_PORT", "465")
     monkeypatch.setenv("SMTP_USER", "user@example.com")
     monkeypatch.setenv("SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.setenv("EMAIL_TO", "to1@example.com, to2@example.com")
     monkeypatch.setenv("TLS_MODE", "ssl")
 
@@ -150,6 +152,7 @@ def test_send_email_ssl_with_html(mock_smtp_ssl, mock_gmail, monkeypatch):
 @patch("sjzl_daily_email.get_gmail_service")
 def test_send_email_debug_mode(mock_gmail, monkeypatch):
     monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.setenv("EMAIL_TO", "to@example.com")
     monkeypatch.setenv("DEBUG_MODE", "1")
 
@@ -179,6 +182,7 @@ def test_send_email_debug_mode(mock_gmail, monkeypatch):
 @patch("sjzl_daily_email.get_gmail_service")
 def test_send_email_normal_mode(mock_gmail, monkeypatch):
     monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.setenv("EMAIL_TO", "to@example.com")
     monkeypatch.delenv("DEBUG_MODE", raising=False)  # Ensure DEBUG_MODE is not set
 
@@ -258,6 +262,7 @@ def test_debug_enabled():
 def test_send_email_recipient_source_email(mock_gmail, monkeypatch):
     # Test RECIPIENT_SOURCE=email mode
     monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.setenv("EMAIL_TO", "to@example.com")
     monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.delenv("DEBUG_MODE", raising=False)
@@ -332,7 +337,7 @@ def test_send_email_recipient_source_db_empty_subscribers(mock_get_subscribers, 
     with pytest.raises(ValueError) as exc_info:
         sjzl.send_email("Test Subject", "Test Body", content_source="stmn1")
 
-    assert "RECIPIENT_SOURCE=db but no active subscribers found for content source: stmn1" in str(exc_info.value)
+    assert "No active subscribers found for content source: stmn1" in str(exc_info.value)
 
 
 @patch("sjzl_daily_email.get_gmail_service")
@@ -345,7 +350,7 @@ def test_send_email_recipient_source_db_no_content_source(mock_gmail, monkeypatc
     with pytest.raises(ValueError) as exc_info:
         sjzl.send_email("Test Subject", "Test Body")
 
-    assert "RECIPIENT_SOURCE=db but no content_source specified" in str(exc_info.value)
+    assert "content_source must be specified" in str(exc_info.value)
 
 
 @patch("sjzl_daily_email.get_gmail_service")
@@ -358,24 +363,23 @@ def test_send_email_recipient_source_invalid(mock_gmail, monkeypatch):
     with pytest.raises(ValueError) as exc_info:
         sjzl.send_email("Test Subject", "Test Body")
 
-    assert "Invalid RECIPIENT_SOURCE value: 'invalid'. Allowed values: 'email', 'db'" in str(exc_info.value)
+    assert "Invalid RECIPIENT_SOURCE value: 'invalid'" in str(exc_info.value) and "Allowed values:" in str(exc_info.value)
 
 
 @patch("sjzl_daily_email.get_gmail_service")
 def test_send_email_recipient_source_default(mock_gmail, monkeypatch):
-    # Test default behavior (email mode)
+    # Test default behavior (now db mode)
     monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.setenv("EMAIL_TO", "to@example.com")
     monkeypatch.delenv("RECIPIENT_SOURCE", raising=False)
     monkeypatch.delenv("DEBUG_MODE", raising=False)
 
-    # Mock Gmail service
-    mock_service = MagicMock()
-    mock_gmail.return_value = mock_service
+    # Without content_source, default db mode should raise
+    with pytest.raises(ValueError) as exc_info:
+        sjzl.send_email("Test Subject", "Test Body")
 
-    sjzl.send_email("Test Subject", "Test Body")
-
-    assert mock_gmail.called
+    assert "content_source must be specified" in str(exc_info.value)
 
 
 @patch("sjzl_daily_email.delivery_tracker.get_missing_recipients")
@@ -387,6 +391,7 @@ def test_send_email_records_delivery_on_success(mock_gmail, mock_record, mock_mi
     from unittest.mock import call
 
     monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.setenv("EMAIL_TO", "user1@example.com,user2@example.com")
     monkeypatch.delenv("DEBUG_MODE", raising=False)
 
@@ -423,6 +428,7 @@ def test_send_email_records_delivery_on_success(mock_gmail, mock_record, mock_mi
 def test_send_email_skips_already_delivered(mock_gmail, mock_missing, monkeypatch):
     """Test that send_email skips recipients already delivered today."""
     monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.setenv("EMAIL_TO", "user1@example.com,user2@example.com,user3@example.com")
     monkeypatch.delenv("DEBUG_MODE", raising=False)
 
@@ -458,6 +464,7 @@ def test_send_email_recovery_idempotent(mock_gmail, mock_record, mock_missing, m
     import datetime as dt
 
     monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.setenv("EMAIL_TO", "alice@example.com,bob@example.com")
     monkeypatch.delenv("DEBUG_MODE", raising=False)
 

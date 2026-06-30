@@ -470,30 +470,31 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
     if debug_mode:
         recipients = [email_from] if email_from else []
     else:
-        # Get recipient source configuration
-        recipient_source = os.getenv("RECIPIENT_SOURCE", "email").strip().lower()
+        # Get recipient source configuration (default: database)
+        recipient_source = os.getenv("RECIPIENT_SOURCE", "db").strip().lower()
 
-        if recipient_source == "email":
-            # Case A: RECIPIENT_SOURCE=email - Exclusively use EMAIL_TO
-            email_to_raw = os.getenv("EMAIL_TO", "")
-            recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
-            if not recipients:
-                raise ValueError("RECIPIENT_SOURCE=email but EMAIL_TO is empty or not set.")
-        elif recipient_source == "db":
-            # Case B: RECIPIENT_SOURCE=db - Exclusively use database subscribers
+        if recipient_source == "db":
+            # Primary mode: RECIPIENT_SOURCE=db - Use database subscribers
             if not content_source:
-                raise ValueError("RECIPIENT_SOURCE=db but no content_source specified.")
+                raise ValueError("content_source must be specified to fetch subscribers from database")
             try:
                 from app.subscriber_manager import get_subscribers
                 recipients = get_subscribers(content_source)
                 if not recipients:
-                    raise ValueError(f"RECIPIENT_SOURCE=db but no active subscribers found for content source: {content_source}")
+                    raise ValueError(f"No active subscribers found for content source: {content_source}")
             except Exception as e:
                 logger.error("Failed to get subscribers from database: %s", e)
                 raise
+        elif recipient_source == "email":
+            # Fallback mode (deprecated): RECIPIENT_SOURCE=email - Use EMAIL_TO env var
+            email_to_raw = os.getenv("EMAIL_TO", "")
+            recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
+            if not recipients:
+                raise ValueError("RECIPIENT_SOURCE=email but EMAIL_TO is empty or not set.")
+            logger.warning("Using EMAIL_TO env var (RECIPIENT_SOURCE=email). Please migrate to database-backed subscribers.")
         else:
             # Invalid configuration
-            raise ValueError(f"Invalid RECIPIENT_SOURCE value: '{recipient_source}'. Allowed values: 'email', 'db'.")
+            raise ValueError(f"Invalid RECIPIENT_SOURCE value: '{recipient_source}'. Allowed values: 'db', 'email'.")
 
     if not recipients:
         raise ValueError("No recipients configured.")

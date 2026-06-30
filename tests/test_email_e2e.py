@@ -13,6 +13,7 @@ def test_email_pipeline_e2e_sjzl_mode(mock_get_gmail_service, monkeypatch):
     # Set up environment variables
     monkeypatch.setenv("SMTP_USER", "test@example.com")
     monkeypatch.setenv("EMAIL_FROM", "sender@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.setenv("EMAIL_TO", "recipient1@example.com,recipient2@example.com")
     monkeypatch.setenv("DEBUG_MODE", "1")
 
@@ -75,6 +76,7 @@ def test_email_pipeline_e2e_ezoe_mode(monkeypatch, fs):
     # Set up environment variables
     monkeypatch.setenv("SMTP_USER", "test@example.com")
     monkeypatch.setenv("EMAIL_FROM", "sender@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
     monkeypatch.setenv("EMAIL_TO", "recipient@example.com")
     monkeypatch.setenv("EZOE_SELECTOR", "2-1-3")
     monkeypatch.setenv("DEBUG_MODE", "1")

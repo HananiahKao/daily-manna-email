@@ -10,6 +10,7 @@ from unittest.mock import patch, MagicMock
 
 # Set up test environment
 os.environ["EMAIL_FROM"] = "test-from@example.com"
+os.environ["RECIPIENT_SOURCE"] = "email"
 os.environ["EMAIL_TO"] = "test-to@example.com"
 os.environ["SMTP_USER"] = "test-smtp@example.com"
 os.environ["DEBUG_MODE"] = "1"
