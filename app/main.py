@@ -1259,6 +1259,145 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.post("/api/subscribers", response_class=JSONResponse)
+    def api_add_subscriber(
+        request: Request,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Add a new subscriber to a content source."""
+        from app.subscriber_manager import add_subscriber, SubscriberError
+
+        try:
+            data = request.json if hasattr(request, 'json') else {}
+        except:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON payload"
+            )
+
+        email = data.get("email", "").strip()
+        content_source = data.get("content_source", "").strip()
+
+        if not email or not content_source:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="email and content_source are required"
+            )
+
+        try:
+            subscriber = add_subscriber(email, content_source)
+            return JSONResponse({
+                "success": True,
+                "subscriber": {
+                    "id": subscriber.id,
+                    "content_source": subscriber.content_source,
+                    "active": subscriber.active,
+                    "subscribed_at": subscriber.subscribed_at.isoformat(),
+                }
+            })
+        except SubscriberError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error adding subscriber: {str(e)}"
+            )
+
+    @app.get("/api/subscribers", response_class=JSONResponse)
+    def api_list_subscribers(
+        content_source: Optional[str] = None,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """List all subscribers, optionally filtered by content source."""
+        from app.subscriber_manager import list_all_subscribers
+
+        try:
+            subscribers = list_all_subscribers()
+            if content_source:
+                subscribers = [s for s in subscribers if s.get("content_source") == content_source]
+            return JSONResponse({
+                "success": True,
+                "subscribers": subscribers,
+                "total": len(subscribers)
+            })
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error listing subscribers: {str(e)}"
+            )
+
+    @app.patch("/api/subscribers/{subscriber_id}", response_class=JSONResponse)
+    def api_update_subscriber(
+        subscriber_id: int,
+        request: Request,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Update subscriber status (toggle active/inactive)."""
+        from app.models import Subscriber, get_db_session
+
+        try:
+            data = request.json if hasattr(request, 'json') else {}
+        except:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON payload"
+            )
+
+        active = data.get("active")
+        if active is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="active field is required"
+            )
+
+        with get_db_session() as session:
+            subscriber = session.query(Subscriber).filter_by(id=subscriber_id).first()
+            if not subscriber:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Subscriber not found: {subscriber_id}"
+                )
+
+            subscriber.active = bool(active)
+            session.commit()
+
+            return JSONResponse({
+                "success": True,
+                "subscriber": {
+                    "id": subscriber.id,
+                    "content_source": subscriber.content_source,
+                    "active": subscriber.active,
+                    "subscribed_at": subscriber.subscribed_at.isoformat(),
+                }
+            })
+
+    @app.delete("/api/subscribers/{subscriber_id}", response_class=JSONResponse)
+    def api_delete_subscriber(
+        subscriber_id: int,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Delete a subscriber."""
+        from app.models import Subscriber, get_db_session
+
+        with get_db_session() as session:
+            subscriber = session.query(Subscriber).filter_by(id=subscriber_id).first()
+            if not subscriber:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Subscriber not found: {subscriber_id}"
+                )
+
+            session.delete(subscriber)
+            session.commit()
+
+            return JSONResponse({
+                "success": True,
+                "message": f"Subscriber {subscriber_id} deleted"
+            })
+
     return app
 
 
