@@ -141,7 +141,7 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 **P/S Ratings:** P=1, S=2 (high priority, moderate implementation complexity)
 
 ### Task 2.1: Migrate from EMAIL_TO Environment Variable to Database
-**Status:** DONE ✅
+**Status:** DONE ✅  
 **P/S:** P=1, S=2  
 
 **Current Limitation:**
@@ -169,7 +169,10 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 4. Remove EMAIL_TO env var references
 5. Add regression test: verify send hits all DB subscribers
 
-**Effort:** ~12 hours (largest Phase 2 task)
+**Refinement:** Content source validation now uses `content_source_factory.get_available_sources()` dynamically instead of hardcoding ("ezoe", "wix"). This enables adding new content sources (e.g., stmn1) by only updating CONTENT_SOURCES in the factory—no subscriber manager changes needed. (Commit: 070ed1a)
+
+**Effort:** ~12 hours (largest Phase 2 task)  
+**Test:** End-to-end tested with stmn1 content source and 2 real email addresses, using database subscribers. Gmail recovery backfill working correctly to prevent duplicates.
 
 ---
 
