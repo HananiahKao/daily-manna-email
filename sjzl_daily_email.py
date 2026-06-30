@@ -545,9 +545,9 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
 
                 # Record delivery immediately after successful send (idempotent)
                 delivery_tracker.record_delivery(recipient, today, message_id)
-                logger.info("Email sent to %s, message ID: %s", recipient, message_id)
+                logger.info("Email sent, message ID: %s", message_id)
             except Exception as e:
-                logger.error("Failed to send email to %s: %s", recipient, e)
+                logger.error("Failed to send email: %s", e)
                 # Continue with other recipients even if one fails
 
         logger.info("Email sent successfully to %d out of %d recipients", len(sent_messages), len(recipients_to_send))
@@ -727,7 +727,7 @@ def run_once() -> int:
         html_with_css = _maybe_convert_zh_cn_to_zh_tw(html_with_css)
         body = _maybe_convert_zh_cn_to_zh_tw(body)
         recipients = send_email(subject, body, html_body=html_with_css, content_source=active_source.get_source_name())
-        logger.info("HTML email (ezoe) sent to %s", ", ".join(recipients.keys()))
+        logger.info("HTML email (ezoe) sent to %d recipients", len(recipients))
         return 0
     # Allow override for testing SMTP without discovery/fetch variability
     test_url = os.getenv("TEST_LESSON_URL")
@@ -778,7 +778,7 @@ def run_once() -> int:
     _debug_preview("SJZL_BODY", body)
 
     recipients = send_email(subject, body, html_body=html_body, content_source="ezoe")
-    logger.info("Email sent to %s", ", ".join(recipients.keys()))
+    logger.info("Email sent to %d recipients", len(recipients))
     return 0
 
 

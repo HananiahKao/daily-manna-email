@@ -58,7 +58,7 @@ def add_subscriber(email: str, content_source: str) -> Subscriber:
         DuplicateSubscriberError: If subscriber already exists for this source
     """
     if not validate_email_format(email):
-        raise SubscriberError(f"Invalid email format: {email}")
+        raise SubscriberError("Invalid email format")
 
     if content_source not in ("ezoe", "wix"):
         raise SubscriberError(f"Invalid content source: {content_source}")
@@ -84,13 +84,13 @@ def add_subscriber(email: str, content_source: str) -> Subscriber:
                     if existing_email == normalized_email:
                         if existing.active:
                             raise DuplicateSubscriberError(
-                                f"Subscriber {email} already exists for {content_source}"
+                                f"Subscriber already exists for {content_source}"
                             )
                         else:
                             # Reactivate inactive subscriber
                             existing.active = True
                             session.commit()
-                            logger.info(f"Reactivated subscriber {email} for {content_source}")
+                            logger.info(f"Reactivated subscriber for {content_source}")
                             return existing
                 except TokenEncryptionError:
                     # Skip corrupted entries but continue checking
@@ -105,13 +105,13 @@ def add_subscriber(email: str, content_source: str) -> Subscriber:
             session.commit()
             session.refresh(subscriber)
 
-            logger.info(f"Added subscriber {email} for {content_source}")
+            logger.info(f"Added subscriber for {content_source}")
             return subscriber
 
         except IntegrityError:
             session.rollback()
             raise DuplicateSubscriberError(
-                f"Subscriber {email} already exists for {content_source}"
+                f"Subscriber already exists for {content_source}"
             )
         except DuplicateSubscriberError:
             # Re-raise duplicate errors without wrapping
@@ -156,7 +156,7 @@ def remove_subscriber(email: str, content_source: str) -> bool:
                     if decrypted_email == email.lower().strip():
                         subscriber.active = False
                         session.commit()
-                        logger.info(f"Removed subscriber {email} from {content_source}")
+                        logger.info(f"Removed subscriber from {content_source}")
                         return True
                 except TokenEncryptionError:
                     # Skip corrupted entries but continue searching
@@ -257,7 +257,7 @@ def migrate_from_env(email_list: str, content_source: str) -> int:
             # Already exists, count as migrated
             migrated += 1
         except SubscriberError as e:
-            logger.warning(f"Failed to migrate {email}: {e}")
+            logger.warning(f"Failed to migrate subscriber: {e}")
             # Continue with other emails
 
     logger.info(f"Migrated {migrated} subscribers to {content_source}")

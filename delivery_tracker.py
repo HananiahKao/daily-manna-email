@@ -125,7 +125,7 @@ def record_delivery(
     }
 
     save_deliveries(deliveries, path)
-    logger.info("Recorded delivery: %s → %s on %s, message_id=%s", recipient, date_str, sent_at_iso, message_id)
+    logger.info("Recorded delivery on %s, message_id=%s", date_str, message_id)
 
 
 def get_date_deliveries(date: dt.date, path: Optional[Path] = None) -> Dict[str, str]:

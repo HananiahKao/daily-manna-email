@@ -58,8 +58,8 @@ def _search_gmail_sent_to_recipient(
             # Return the most recent message ID
             message_id = messages[0].get('id')
             logger.info(
-                "Found existing message to %s on %s: %s (crash recovery)",
-                recipient, date.isoformat(), message_id
+                "Found existing message on %s: %s (crash recovery)",
+                date.isoformat(), message_id
             )
             return message_id
 
@@ -67,8 +67,8 @@ def _search_gmail_sent_to_recipient(
 
     except Exception as e:
         logger.warning(
-            "Failed to search Gmail for recipient %s: %s (will attempt normal send)",
-            recipient, e
+            "Failed to search Gmail: %s (will attempt normal send)",
+            e
         )
         return None
 
@@ -113,8 +113,8 @@ def backfill_missing_deliveries(
             delivery_tracker.record_delivery(recipient, date, message_id, path=path)
             backfilled[recipient] = message_id
             logger.info(
-                "Backfilled delivery record for %s with message_id=%s",
-                recipient, message_id
+                "Backfilled delivery record with message_id=%s",
+                message_id
             )
 
     if backfilled:
