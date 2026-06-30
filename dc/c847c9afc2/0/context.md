@@ -335,3 +335,7 @@ start Task 2.2
 
 Wait, you didn't come in the dark. Always check git status first.
 
+### Prompt 70
+
+Hey, these are authenticated endpoints, right, and what about unsubscribe?
+
