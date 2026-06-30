@@ -12,11 +12,11 @@
 - [x] **1.1.1** Commit 1: Capture Gmail message IDs ✅ DONE
 - [x] **1.1.2** Commit 2: Store message IDs with delivery tracking ✅ DONE
 - [x] **1.1.3** Commit 3: Add Gmail recovery logic on startup ✅ DONE
-- [ ] **1.1.4** Commit 4: Integration test for recovery
-- [ ] **1.2** Remove email addresses from logs (privacy fix)
+- [x] **1.1.4** Commit 4: Integration test for recovery ✅ DONE
+- [x] **1.2** Remove email addresses from logs (privacy fix) 🔄 IN PROGRESS
 - [ ] **1.3** Add JSON schema validation for dispatch rules
 
-**Phase 1 Progress:** 3/6 tasks complete (50%)
+**Phase 1 Progress:** 5/6 tasks complete (83%) | 1 in progress
 
 ### Phase 2: Subscriber Database Integration (July) — P=1, S=2
 - [ ] **2.1** Migrate from EMAIL_TO env var to database
@@ -42,7 +42,7 @@
 
 ---
 
-**Overall Progress:** 3/16 tasks complete (19%) | ⏳ In Active Development
+**Overall Progress:** 5/16 tasks complete (31%) | 1 in progress | ⏳ In Active Development
 
 ---
 
