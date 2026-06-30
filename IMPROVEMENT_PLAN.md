@@ -23,7 +23,7 @@
 - [ ] **2.2** Add subscriber management API endpoints
 - [ ] **2.3** Subscriber onboarding flow (optional, can defer)
 
-**Phase 2 Progress:** 0/3 tasks complete (0%)
+**Phase 2 Progress:** 1/3 tasks complete (33%)
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
 - [ ] **3.1** Enhance job history dashboard
@@ -42,7 +42,7 @@
 
 ---
 
-**Overall Progress:** 6/16 tasks complete (38%) | ⏳ Phase 2 Ready
+**Overall Progress:** 7/16 tasks complete (44%) | ⏳ Phase 2 in Progress
 
 ---
 
@@ -141,7 +141,7 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 **P/S Ratings:** P=1, S=2 (high priority, moderate implementation complexity)
 
 ### Task 2.1: Migrate from EMAIL_TO Environment Variable to Database
-**Status:** NOT STARTED  
+**Status:** DONE ✅
 **P/S:** P=1, S=2  
 
 **Current Limitation:**
