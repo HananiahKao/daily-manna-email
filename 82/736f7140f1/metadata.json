@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "82736f7140f1",
+  "strategy": "manual-commit",
+  "branch": "feature/email-activity-dashboard",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/subscriber_manager.py",
+    "delivery_tracker.py",
+    "gmail_recovery.py",
+    "scripts/migrate_subscribers.py",
+    "sjzl_daily_email.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/82/736f7140f1/0/metadata.json",
+      "transcript": "/82/736f7140f1/0/full.jsonl",
+      "context": "/82/736f7140f1/0/context.md",
+      "content_hash": "/82/736f7140f1/0/content_hash.txt",
+      "prompt": "/82/736f7140f1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1446,
+    "cache_creation_tokens": 749978,
+    "cache_read_tokens": 16856772,
+    "output_tokens": 84282,
+    "api_call_count": 173
+  }
+}
