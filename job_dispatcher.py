@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 
 import schedule_manager as sm
+from dispatch_rules_validator import validate_dispatch_rules, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,14 @@ def load_rules(config_path: Path) -> List[DispatchRule]:
 
     with config_path.open("r", encoding="utf-8") as fh:
         raw_config = json.load(fh)
+
+    # Validate schema before parsing
+    try:
+        validate_dispatch_rules(raw_config)
+    except ValidationError as e:
+        raise ValueError(
+            f"Invalid dispatch rules in {config_path}: {e}"
+        ) from e
 
     rules: List[DispatchRule] = []
     for item in raw_config:
