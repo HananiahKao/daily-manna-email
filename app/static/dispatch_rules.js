@@ -143,6 +143,24 @@
       titleWrap.appendChild(title);
       titleWrap.appendChild(meta);
 
+      const toggleContainer = document.createElement("div");
+      toggleContainer.className = "dispatch-toggle-container";
+
+      const toggleSwitch = document.createElement("input");
+      toggleSwitch.type = "checkbox";
+      toggleSwitch.id = `dispatch-active-${rule.name}`;
+      toggleSwitch.className = "dispatch-toggle-switch";
+      toggleSwitch.checked = rule.active !== false;
+      toggleSwitch.setAttribute("aria-label", `Toggle ${formatJobName(rule.name)}`);
+
+      const toggleLabel = document.createElement("label");
+      toggleLabel.htmlFor = `dispatch-active-${rule.name}`;
+      toggleLabel.className = "dispatch-toggle-label";
+      toggleLabel.setAttribute("title", "Click or drag to toggle");
+
+      toggleContainer.appendChild(toggleSwitch);
+      toggleContainer.appendChild(toggleLabel);
+
       const saveBtn = document.createElement("button");
       saveBtn.type = "button";
       saveBtn.className = "dispatch-save-btn";
@@ -150,6 +168,7 @@
       saveBtn.disabled = true;
 
       header.appendChild(titleWrap);
+      header.appendChild(toggleContainer);
       header.appendChild(saveBtn);
 
       const body = document.createElement("div");
@@ -235,6 +254,48 @@
       };
 
       timeInput.addEventListener("input", updateSaveState);
+
+      toggleSwitch.addEventListener("change", async () => {
+        const newActive = toggleSwitch.checked;
+        toggleSwitch.disabled = true;
+
+        try {
+          const response = await fetch(`/api/dispatch-rules/${encodeURIComponent(rule.name)}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ active: newActive }),
+          });
+
+          if (!response.ok) {
+            let errorMessage = "Failed to toggle dispatch rule.";
+            try {
+              const errorData = await response.json();
+              if (errorData && errorData.detail) {
+                errorMessage = errorData.detail;
+              }
+            } catch (err) {
+              // ignore parse errors
+            }
+            throw new Error(errorMessage);
+          }
+
+          const updated = await response.json();
+          rule.active = updated.active !== false;
+
+          if (newActive) {
+            setFeedback("success", `${formatJobName(rule.name)} enabled.`);
+          } else {
+            setFeedback("success", `${formatJobName(rule.name)} disabled.`);
+          }
+        } catch (error) {
+          toggleSwitch.checked = !newActive;
+          setFeedback("error", error.message || "Failed to toggle dispatch rule.");
+        } finally {
+          toggleSwitch.disabled = false;
+        }
+      });
 
       saveBtn.addEventListener("click", async () => {
         const newTime = timeInput.value;

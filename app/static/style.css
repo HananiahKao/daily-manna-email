@@ -1276,6 +1276,54 @@ kbd {
   transform: scale(0.98);
 }
 
+.dispatch-toggle-container {
+  display: flex;
+  align-items: center;
+}
+
+.dispatch-toggle-switch {
+  display: none;
+}
+
+.dispatch-toggle-label {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 28px;
+  background-color: #d1d5db;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  border: 1px solid #9ca3af;
+}
+
+.dispatch-toggle-label::after {
+  content: '';
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  top: 1px;
+  left: 1px;
+  transition: transform 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.dispatch-toggle-switch:checked + .dispatch-toggle-label {
+  background-color: #4f46e5;
+  border-color: #4f46e5;
+}
+
+.dispatch-toggle-switch:checked + .dispatch-toggle-label::after {
+  transform: translateX(22px);
+}
+
+.dispatch-toggle-switch:disabled + .dispatch-toggle-label {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .dispatch-rules-feedback {
   margin: 0.5rem 1.5rem 1.25rem;
   font-size: 0.9rem;

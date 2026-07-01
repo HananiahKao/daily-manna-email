@@ -120,6 +120,7 @@ class BatchSelectorParsePayload(BaseModel):
 class DispatchRulePayload(BaseModel):
     time: Optional[str] = None
     days: Optional[List[str | int]] = None
+    active: Optional[bool] = None
 
     @field_validator("time")
     @classmethod
@@ -919,6 +920,7 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         config_path = _resolve_dispatch_config_path()
         rules = job_dispatcher.load_rules(config_path)
+        raw_rules = _load_dispatch_config(config_path)
         payload = {
             "config_path": str(config_path),
             "timezone": sm.TZ_NAME,
@@ -928,6 +930,7 @@ def create_app() -> FastAPI:
                     "time": f"{rule.time.hour:02d}:{rule.time.minute:02d}",
                     "weekdays": list(rule.weekdays),
                     "weekdays_label": rule.weekdays_label,
+                    "active": next((r.get("active", True) for r in raw_rules if r.get("name") == rule.name), True),
                 }
                 for rule in rules
             ],
@@ -949,6 +952,8 @@ def create_app() -> FastAPI:
                     rule["time"] = payload.time
                 if payload.days is not None:
                     rule["days"] = payload.days
+                if payload.active is not None:
+                    rule["active"] = payload.active
                 updated_rule = rule
                 break
 
@@ -960,6 +965,7 @@ def create_app() -> FastAPI:
             "name": updated_rule.get("name"),
             "time": updated_rule.get("time"),
             "days": updated_rule.get("days") or updated_rule.get("weekdays"),
+            "active": updated_rule.get("active", True),
         })
 
     @app.post("/actions/{date}")
