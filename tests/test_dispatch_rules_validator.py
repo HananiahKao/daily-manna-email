@@ -217,8 +217,8 @@ class TestValidateDispatchRules:
         with pytest.raises(ValidationError, match="'days' must be array"):
             validate_dispatch_rules(config)
 
-    def test_invalid_days_empty_array(self):
-        """Test that days array cannot be empty."""
+    def test_valid_config_with_empty_days_fallback(self):
+        """Test that empty days array is accepted as fallback (disabled rule)."""
         config = [
             {
                 "name": "days-empty",
@@ -227,7 +227,35 @@ class TestValidateDispatchRules:
                 "commands": [["bash", "script.sh"]],
             }
         ]
-        with pytest.raises(ValidationError, match="'days' array cannot be empty"):
+        # Should not raise - empty days is allowed as fallback for disabled rules
+        validate_dispatch_rules(config)
+
+    def test_valid_config_with_active_false(self):
+        """Test that active: false disables rule validation (skips time/days checks)."""
+        config = [
+            {
+                "name": "disabled-rule",
+                "time": "06:00",
+                "days": [],
+                "commands": [["bash", "script.sh"]],
+                "active": False,
+            }
+        ]
+        # Should not raise - active: false disables the rule
+        validate_dispatch_rules(config)
+
+    def test_invalid_active_not_boolean(self):
+        """Test that active field must be boolean."""
+        config = [
+            {
+                "name": "bad-active",
+                "time": "06:00",
+                "days": ["daily"],
+                "commands": [["bash", "script.sh"]],
+                "active": "false",
+            }
+        ]
+        with pytest.raises(ValidationError, match="'active' must be boolean"):
             validate_dispatch_rules(config)
 
     def test_invalid_weekday_index_negative(self):
