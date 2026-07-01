@@ -1444,6 +1444,12 @@ def create_app() -> FastAPI:
                 detail=f"Error subscribing: {str(e)}"
             )
 
+    @app.get("/subscribe")
+    def page_signup(request: Request):
+        """Render the public subscriber signup page."""
+        sources = content_source_factory.get_available_sources()
+        return templates.TemplateResponse("signup.html", {"request": request, "sources": sources})
+
     @app.post("/api/public/unsubscribe", response_class=JSONResponse)
     async def api_public_unsubscribe(request: Request) -> JSONResponse:
         """Public self-service unsubscribe endpoint (no authentication required)."""

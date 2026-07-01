@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Subscribe - Daily Manna Email</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .container { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 40px; max-width: 400px; width: 100%; }
+        h1 { color: #222; margin-bottom: 10px; font-size: 24px; }
+        .subtitle { color: #666; margin-bottom: 30px; font-size: 14px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: #333; font-weight: 500; font-size: 14px; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        input:focus, select:focus { outline: none; border-color: #999; }
+        button { width: 100%; padding: 10px; background: #333; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 14px; }
+        button:hover { background: #222; }
+        .message { padding: 12px; border-radius: 4px; margin-bottom: 20px; display: none; font-size: 14px; }
+        .message.success { background: #e6f4ea; color: #1b5e20; }
+        .message.error { background: #fce8e6; color: #b71c1c; }
+        .footer { margin-top: 20px; text-align: center; border-top: 1px solid #eee; padding-top: 20px; font-size: 13px; }
+        .footer a { color: #0066cc; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Subscribe</h1>
+        <p class="subtitle">Get daily emails from your favorite content</p>
+
+        <div id="message" class="message"></div>
+
+        <form id="subscribeForm">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required placeholder="you@example.com">
+            </div>
+
+            <div class="form-group">
+                <label for="source">Content Source</label>
+                <select id="source" name="source" required>
+                    <option value="">-- Select a source --</option>
+                    {% for source in sources %}
+                    <option value="{{ source }}">{{ source }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <button type="submit">Subscribe</button>
+        </form>
+
+        <div class="footer">
+            <a href="/unsubscribe">Unsubscribe</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('subscribeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const source = document.getElementById('source').value;
+            const messageEl = document.getElementById('message');
+
+            try {
+                const response = await fetch('/api/public/subscribe', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email, content_source: source})
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    messageEl.textContent = 'Success! You are subscribed.';
+                    messageEl.className = 'message success';
+                    document.getElementById('subscribeForm').reset();
+                } else {
+                    messageEl.textContent = 'Error: ' + (data.detail || 'Subscription failed');
+                    messageEl.className = 'message error';
+                }
+                messageEl.style.display = 'block';
+            } catch (error) {
+                messageEl.textContent = 'Error: ' + error.message;
+                messageEl.className = 'message error';
+                messageEl.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>
