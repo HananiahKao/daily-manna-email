@@ -22,8 +22,9 @@
 - [x] **2.1** Migrate from EMAIL_TO env var to database ✅
 - [x] **2.2** Add subscriber management API endpoints ✅
 - [x] **2.3** Subscriber onboarding flow ✅
+- [ ] **2.4** (Bonus) Instant test send button in dashboard
 
-**Phase 2 Progress:** 3/3 tasks complete (100%) ✅ COMPLETE
+**Phase 2 Progress:** 3/4 tasks complete (75%) — 2.4 in progress
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
 - [ ] **3.1** Enhance job history dashboard
@@ -207,6 +208,36 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 **Decision:** Defer to Phase 4 if time is constrained.
 
 **Effort:** ~8 hours (deferred)
+
+---
+
+### Task 2.4: (Bonus) Instant Test Send Button
+**Status:** NOT STARTED  
+**P/S:** P=2, S=2 (testing/debugging, improves validation of Phase 2)
+
+**Purpose:** Allow manual trigger of send flow from dashboard to test Phase 2 integration.
+
+**Requirements:**
+- Dashboard button: "Send Now" to manually trigger send cycle
+- Configurable: choose content source + subscriber(s) to test
+- Real send: actually sends emails to selected recipients
+- Feedback: show success/error in UI
+- Audit: log test sends separately (don't count as scheduled)
+
+**API Endpoint:**
+- `POST /api/test-send` - Accepts content_source, recipient(s), return message_id
+
+**Files:**
+- `app/main.py` - Add test send endpoint
+- `app/templates/dashboard.html` - Add button + modal
+- `app/static/test_send.js` - Handle UI interaction
+
+**Benefits:**
+- Verify Phase 2 end-to-end: DB → send → delivery tracking
+- Faster iteration (no wait for scheduled send)
+- Reduce testing burden during Phase 2 validation
+
+**Effort:** ~4 hours
 
 ---
 
