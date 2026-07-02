@@ -447,7 +447,7 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
 
 # -------- Email sending --------
 
-def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, content_source: TypingOptional[str] = None) -> Dict[str, str]:
+def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, content_source: TypingOptional[str] = None, is_test: bool = False) -> Dict[str, str]:
     """
     Send email using Gmail API to each recipient individually.
     Skips recipients already sent to today (idempotent recovery).
@@ -458,12 +458,18 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
         body: Plain text email body
         html_body: Optional HTML email body
         content_source: Content source ('ezoe' or 'wix') to determine recipients from database
+        is_test: If True, mark email as test (prepend [SYSTEM TEST] to subject, add badge to body)
+                 Also checked via TEST_MODE environment variable
 
     Returns:
         Dict[str, str]: {recipient_email: gmail_message_id} for successfully sent emails
     """
     email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
     today = dt.date.today()
+
+    # Check TEST_MODE environment variable (set by test-send API)
+    if os.getenv("TEST_MODE", "").lower() in ("1", "true", "yes"):
+        is_test = True
 
     # Debug mode: send to EMAIL_FROM instead of subscribers
     debug_mode = os.getenv("DEBUG_MODE") not in (None, "", "0", "false", "False")
@@ -499,17 +505,38 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
     if not recipients:
         raise ValueError("No recipients configured.")
 
+    # Modify subject and html_body for test sends
+    if is_test:
+        subject = f"[SYSTEM TEST] {subject}"
+        # Add test badge to top of HTML body
+        test_badge_html = (
+            '<div style="background-color: #fffacd; border-left: 4px solid #ffd700; padding: 12px; '
+            'margin-bottom: 16px; border-radius: 8px;">'
+            '<strong>SYSTEM TEST EMAIL</strong><br>'
+            'This is a test email from Daily Manna Email system testing. Please disregard.'
+            '</div>'
+        )
+        if html_body:
+            html_body = test_badge_html + html_body
+        else:
+            # If no HTML body, create one with just the badge
+            html_body = f'{test_badge_html}<p>{body.replace(chr(10), "<br>")}</p>'
+
     # Backfill any missing delivery records from Gmail (crash recovery)
     gmail_recovery.ensure_no_duplicates_on_startup(recipients, today)
 
     # Filter out already-delivered recipients for idempotent recovery
-    recipients_to_send = delivery_tracker.get_missing_recipients(recipients, today)
-
-    if recipients_to_send:
-        logger.info("Sending to %d recipients (skipped %d already delivered today)",
-                   len(recipients_to_send), len(recipients) - len(recipients_to_send))
+    # Test sends bypass idempotency (don't record delivery) to allow repeated testing
+    if is_test:
+        recipients_to_send = recipients
+        logger.info("TEST MODE: Sending to %d recipients (skipping idempotency check)", len(recipients))
     else:
-        logger.info("All %d recipients already delivered today, skipping send", len(recipients))
+        recipients_to_send = delivery_tracker.get_missing_recipients(recipients, today)
+        if recipients_to_send:
+            logger.info("Sending to %d recipients (skipped %d already delivered today)",
+                       len(recipients_to_send), len(recipients) - len(recipients_to_send))
+        else:
+            logger.info("All %d recipients already delivered today, skipping send", len(recipients))
 
     try:
         service = get_gmail_service()
@@ -545,7 +572,9 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
                 sent_messages[recipient] = message_id
 
                 # Record delivery immediately after successful send (idempotent)
-                delivery_tracker.record_delivery(recipient, today, message_id)
+                # Skip recording for test sends to allow repeated testing
+                if not is_test:
+                    delivery_tracker.record_delivery(recipient, today, message_id)
                 logger.info("Email sent, message ID: %s", message_id)
             except Exception as e:
                 logger.error("Failed to send email: %s", e)

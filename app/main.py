@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import io
+import logging
 from pathlib import Path
 import subprocess
 import sys
@@ -42,6 +43,8 @@ from app.oauth_scopes import get_scopes_descriptions
 from app.cron_runner import get_cron_runner, shutdown_cron_runner
 from app.caffeine_mode import start_caffeine_mode
 
+
+logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -967,6 +970,90 @@ def create_app() -> FastAPI:
             "days": updated_rule.get("days") or updated_rule.get("weekdays"),
             "active": updated_rule.get("active", True),
         })
+
+    @app.post("/api/test-send", response_class=JSONResponse)
+    async def api_test_send(
+        request: Request,
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Trigger a test send by running a dispatch job with TEST_MODE flag.
+
+        Request body:
+        {
+          "job_name": "morning-revival-daily-send" | "bible-journey-daily-send" | "stmn1-bible-journey-daily-send"
+        }
+
+        Returns:
+        {
+          "status": "success" | "error",
+          "message": "...",
+          "sent_count": N
+        }
+        """
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body")
+
+        job_name = body.get("job_name", "").strip()
+        if not job_name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="job_name is required")
+
+        try:
+            # Load available jobs
+            rules = job_dispatcher.load_rules(job_dispatcher.DEFAULT_CONFIG_PATH)
+            rule = next((r for r in rules if r.name == job_name), None)
+            if not rule:
+                available_jobs = [r.name for r in rules]
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unknown job: {job_name}. Available: {', '.join(available_jobs)}"
+                )
+
+            # Run the job manually through the full pipeline with TEST_MODE flag
+            cron_runner = await get_cron_runner()
+            # Set TEST_MODE in environment to signal the job to add [SYSTEM TEST] markers
+            os.environ["TEST_MODE"] = "1"
+            try:
+                result = await cron_runner.run_job_manually(job_name)
+                if not result:
+                    raise Exception(f"Job execution returned no result")
+
+                # Check job execution status
+                if result.status != "success":
+                    raise Exception(f"Job {job_name} failed with status: {result.status}. Error: {result.error_message}")
+
+                # Extract sent count from logs if available
+                sent_count = 0
+                if result.logs:
+                    import re
+                    # Search through all log lines for recipient count
+                    logs_text = "\n".join(result.logs)
+                    match = re.search(r"Sending to (\d+) recipients", logs_text)
+                    if match:
+                        sent_count = int(match.group(1))
+
+                message = f"✓ Test job '{job_name}' executed successfully"
+                if sent_count > 0:
+                    message += f". Sent to {sent_count} recipient(s)."
+
+                return JSONResponse({
+                    "status": "success",
+                    "message": message,
+                    "sent_count": sent_count,
+                })
+            finally:
+                # Clear TEST_MODE flag
+                os.environ.pop("TEST_MODE", None)
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("Test send failed: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Test send failed: {str(e)}"
+            )
 
     @app.post("/actions/{date}")
     def handle_action(

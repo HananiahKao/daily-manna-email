@@ -11,5 +11,5 @@ if [ -f .env ]; then
     set +a
 fi
 
-# Start dev server
-python -m uvicorn app.main:app --reload --port 8000
+# Start dev server on 0.0.0.0 (accessible via VPN from outside local network)
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

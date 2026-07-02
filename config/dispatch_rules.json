@@ -13,7 +13,8 @@
     ],
     "env": {
       "CONTENT_SOURCE": "ezoe"
-    }
+    },
+    "active": true
   },
   {
     "name": "morning-revival-daily-send",
@@ -45,7 +46,8 @@
     ],
     "env": {
       "CONTENT_SOURCE": "stmn1"
-    }
+    },
+    "active": true
   },
   {
     "name": "bible-journey-weekly-summary",
