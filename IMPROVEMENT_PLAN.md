@@ -22,9 +22,9 @@
 - [x] **2.1** Migrate from EMAIL_TO env var to database ✅
 - [x] **2.2** Add subscriber management API endpoints ✅
 - [x] **2.3** Subscriber onboarding flow ✅
-- [ ] **2.4** (Bonus) Instant test send button in dashboard
+- [x] **2.4** (Bonus) Instant test send button in dashboard ✅
 
-**Phase 2 Progress:** 3/4 tasks complete (75%) — 2.4 in progress
+**Phase 2 Progress:** 4/4 tasks complete (100%) ✅ COMPLETE
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
 - [ ] **3.1** Enhance job history dashboard
@@ -43,7 +43,7 @@
 
 ---
 
-**Overall Progress:** 10/16 tasks complete (63%) | ⏳ Phase 3 Next
+**Overall Progress:** 11/17 tasks complete (65%) | ⏳ Phase 3 Next
 
 ---
 
