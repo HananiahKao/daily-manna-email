@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "70370241ae92",
+  "strategy": "manual-commit",
+  "branch": "feature/email-activity-dashboard",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "IMPROVEMENT_PLAN.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/70/370241ae92/0/metadata.json",
+      "transcript": "/70/370241ae92/0/full.jsonl",
+      "context": "/70/370241ae92/0/context.md",
+      "content_hash": "/70/370241ae92/0/content_hash.txt",
+      "prompt": "/70/370241ae92/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5813,
+    "cache_creation_tokens": 1547899,
+    "cache_read_tokens": 75364640,
+    "output_tokens": 266929,
+    "api_call_count": 703
+  }
+}
