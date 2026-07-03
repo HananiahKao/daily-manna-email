@@ -33,17 +33,18 @@
 
 **Phase 3 Progress:** 0/3 tasks complete (0%)
 
-### Phase 4: Email Formatting & Polish (September) — P=3, S=2–3
+### Phase 4: Email Formatting & Polish (September) — P=2–3, S=2–3
+- [ ] **4.0** Fix persistent messages in dashboard UI
 - [ ] **4.1** Email HTML/CSS improvements
 - [ ] **4.2** Expand content sources (channel management)
 - [ ] **4.3** Documentation & architecture guide
 - [ ] **4.4** Deployment & scaling preparation
 
-**Phase 4 Progress:** 0/4 tasks complete (0%)
+**Phase 4 Progress:** 0/5 tasks complete (0%)
 
 ---
 
-**Overall Progress:** 11/17 tasks complete (65%) | ⏳ Phase 3 Next
+**Overall Progress:** 11/18 tasks complete (61%) | ⏳ Phase 3 Next
 
 ---
 
@@ -302,7 +303,48 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 ## Phase 4: Email Formatting & Polish (September 2026)
 
 **Goal:** Improve email appearance and prepare for launch.  
-**P/S Ratings:** P=3, S=2–3 (cosmetic but important for user experience)
+**P/S Ratings:** P=2–3, S=2–3 (cosmetic but important for user experience)
+
+### Task 4.0: Fix Persistent Messages in Dashboard UI
+**Status:** NOT STARTED  
+**P/S:** P=2, S=2 (DX improvement, affects all forms/modals)
+
+**Current Problem:** Server messages sent via message callback (error, success notifications) persist in page state and reappear after refresh. Examples:
+- "Failed to update entry"
+- "Cross-site attack message"  
+- Old error/success messages from previous actions
+
+**Expected Behavior:** Messages should be transient (auto-dismiss after 3-5 seconds) and cleared on page navigation/refresh. They should NOT persist across page reloads.
+
+**Current Message System:**
+- Flash messages (Jinja2 server-side): Rendered in HTML, no auto-dismiss
+- Feedback elements (client-side): dispatch_rules.js and test_send.js use `setFeedback()` with 3-5s auto-dismiss
+- Notifications (localStorage): Job history with acknowledged state
+
+**Root Cause:** Messages stored in DOM state or localStorage without clear lifecycle management tied to page load.
+
+**Fix:**
+- Flash messages: Add client-side auto-dismiss timeout (3-5 seconds)
+- Feedback elements: Ensure consistent auto-dismiss across all modals/overlays
+- Clear message queue on page load (don't persist)
+- Use sessionStorage instead of localStorage for transient state
+- Ensure server messages don't leak into page state persistence
+
+**Files:**
+- `app/templates/dashboard.html` - Flash message section and feedback elements
+- `app/static/notification.js` - Message lifecycle management
+- `app/static/dispatch_rules.js` - Feedback handling (reference implementation)
+- `app/static/test_send.js` - Feedback handling (reference implementation)
+
+**Benefits:**
+- Cleaner UX: no stale error messages
+- User clarity: messages disappear after acknowledgment
+- Consistency: all messages follow same transient behavior
+- Better DX: reduces confusion from old messages
+
+**Effort:** ~4 hours
+
+---
 
 ### Task 4.1: Email HTML/CSS Improvements
 **Status:** NOT STARTED  
