@@ -38,6 +38,7 @@ import requests
 from bs4 import BeautifulSoup
 import delivery_tracker
 import gmail_recovery
+import schedule_manager as sm
 
 # -------- CSS extraction for ezoe mode --------
 
@@ -465,7 +466,7 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
         Dict[str, str]: {recipient_email: gmail_message_id} for successfully sent emails
     """
     email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
-    today = dt.date.today()
+    today = sm.taipei_today()
 
     # Check TEST_MODE environment variable (set by test-send API)
     if os.getenv("TEST_MODE", "").lower() in ("1", "true", "yes"):
@@ -598,7 +599,7 @@ def run_once() -> int:
       - Default (SJZL): discover latest from four.soqimp.com and send plain text.
       - Selector HTML mode (EZOE_SELECTOR set): fetch ezoe.work lesson day HTML and send rich HTML with plain-text fallback.
     """
-    today = dt.datetime.now().strftime("%Y-%m-%d")
+    today = sm.taipei_today().isoformat()
     EZOe_SELECTOR = os.getenv("EZOE_SELECTOR")
     EZOe_BASE = os.getenv("EZOE_BASE", "https://ezoe.work/books/2")
     abs_url = None  # Initialize for footer generation
