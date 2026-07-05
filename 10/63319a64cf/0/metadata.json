@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "1063319a64cf",
+  "session_id": "3b9fdde5-bc21-416a-a6f4-642735db2753",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-05T07:42:07.759382Z",
+  "branch": "feature/email-activity-dashboard",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "sjzl_daily_email.py"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "23040b3340ae",
+  "transcript_identifier_at_start": "331aee85-1141-43f0-87fe-2f2e4d1df7cf",
+  "token_usage": {
+    "input_tokens": 5959,
+    "cache_creation_tokens": 1859687,
+    "cache_read_tokens": 77679890,
+    "output_tokens": 272592,
+    "api_call_count": 720
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-05T07:42:04.210897Z",
+    "agent_lines": 3,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 3,
+    "agent_percentage": 100
+  },
+  "transcript_path": ".claude/projects/-Users-hananiah-Developer-daily-manna-email/3b9fdde5-bc21-416a-a6f4-642735db2753.jsonl"
+}
