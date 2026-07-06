@@ -42,6 +42,11 @@
 
 **Phase 4 Progress:** 0/5 tasks complete (0%)
 
+### Phase 5: Testing Infrastructure (Post-September)
+- Local production orchestrator (Docker Compose simulation of Render)
+- End-to-end test scenarios (crash recovery, backfilling, multi-send)
+- Separate project: `/Users/hananiah/Developer/daily-manna-testing/`
+
 ---
 
 **Overall Progress:** 11/18 tasks complete (61%) | ⏳ Phase 3 Next
@@ -259,12 +264,14 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 **Enhancement:**
 - Show job error messages in UI (currently hidden)
 - Highlight failed jobs in red/warning color
+- Fix relative time display: show "yesterday" instead of "16 hours ago" for older entries
 - Add admin Slack webhook for critical failures (optional)
 - Allow users to check personal delivery status (view their sent date)
 
 **Files:**
 - `app/main.py` - API endpoints (already exist, just enhance)
 - `app/templates/dashboard.html` - UI improvements
+- `app/static/notification.js` - Relative time formatting logic
 
 **Effort:** ~6 hours
 
