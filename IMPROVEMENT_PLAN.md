@@ -28,8 +28,9 @@
   - Signup shows Chinese titles; admin dashboard shows technical names
 - [ ] **2.6** Disable EZOE content source (Polish)
 - [ ] **2.7** Refactor send_email() to require recipients parameter (Polish)
+- [ ] **2.8** Admin dashboard indicators for disabled sources (Polish)
 
-**Phase 2 Progress:** 4/4 core + 1/3 polish complete (71%) | 2 polish tasks pending
+**Phase 2 Progress:** 4/4 core + 1/4 polish complete (63%) | 3 polish tasks pending
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
 - [ ] **3.1** Enhance job history dashboard
@@ -338,6 +339,39 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 - `schedule_tasks.py` - Update callers
 
 **Effort:** ~2 hours
+
+---
+
+### Task 2.8: Admin dashboard indicators for disabled sources
+**Status:** NOT STARTED  
+**P/S:** P=2, S=2 (admin UX, visibility)
+
+**Purpose:** Show disabled content sources in admin dashboard with clear indicators. Allow admin visibility and management while preventing users from selecting them.
+
+**Problem:**
+- User-facing signup hides disabled sources (good UX for users)
+- But admin dashboard may be confusing if default source is disabled
+- Jobs might reference disabled sources—admin needs visibility
+- No warning if job tries to use disabled source
+
+**Solution:**
+- Dashboard shows disabled sources with "Disabled" badge
+- Admin can still view/manage disabled sources
+- Warn if job rule uses disabled source
+- Gracefully handle job execution with disabled sources (error/skip)
+
+**Implementation:**
+- `app/main.py` - Add disabled source info to dashboard context
+- `app/templates/dashboard.html` - Show disabled badge on content source selector
+- `dispatch_rules_validator.py` - Warn if rule references disabled source
+- `schedule_tasks.py:run_once()` - Handle disabled source gracefully
+
+**Behavior:**
+- Dashboard shows: "Content Source: 聖經之旅 (ezoe) [DISABLED]"
+- Job with disabled source shows warning: "⚠️ This job uses disabled source EZOE"
+- Job execution: Skip send or error gracefully
+
+**Effort:** ~1.5 hours
 
 ---
 
