@@ -27,8 +27,9 @@
   - Auto-disambiguates when multiple sources share same display name
   - Signup shows Chinese titles; admin dashboard shows technical names
 - [ ] **2.6** Disable EZOE content source (Polish)
+- [ ] **2.7** Refactor send_email() to require recipients parameter (Polish)
 
-**Phase 2 Progress:** 4/4 core + 1/2 polish complete (83%) | 1 polish task pending (2.6)
+**Phase 2 Progress:** 4/4 core + 1/3 polish complete (71%) | 2 polish tasks pending
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
 - [ ] **3.1** Enhance job history dashboard
@@ -301,6 +302,42 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 - `.env.example` - Document DISABLED_CONTENT_SOURCES variable
 
 **Effort:** ~0.5 hours
+
+---
+
+### Task 2.7: Refactor send_email() to require recipients parameter
+**Status:** NOT STARTED  
+**P/S:** P=2, S=2 (code quality, semantic clarity)
+
+**Purpose:** Separate recipient determination from email sending. Currently send_email() both determines recipients (from database or env var) AND sends email, mixing concerns. Move recipient logic to callers (run_once, summary email, test send).
+
+**Problem:** 
+- send_email() shouldn't determine recipients—that's the caller's responsibility
+- Summary email hacks environment variables to hijack EMAIL_TO (brittle)
+- Semantic confusion: is send_email responsible for who gets the email?
+
+**Solution:**
+- Make `recipients` a required parameter to send_email()
+- Remove RECIPIENT_SOURCE logic from send_email()
+- Callers determine recipients first, then pass to send_email()
+- Example: run_once() calls get_subscribers(source), then send_email(..., recipients=...)
+
+**Implementation:**
+- `sjzl_daily_email.py:send_email()` - Add recipients parameter, remove recipient determination logic
+- `schedule_tasks.py:run_once()` - Fetch subscribers, pass to send_email()
+- `schedule_tasks.py:_send_summary_email()` - Pass admin email list to send_email(), remove env var hacking
+
+**Impact:**
+- Cleaner separation of concerns
+- More testable (no env var hijacking)
+- More readable (explicit recipients at call site)
+- Removes deprecated RECIPIENT_SOURCE="email" mode
+
+**Files:**
+- `sjzl_daily_email.py` - Refactor send_email() signature
+- `schedule_tasks.py` - Update callers
+
+**Effort:** ~2 hours
 
 ---
 
