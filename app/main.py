@@ -577,9 +577,11 @@ def create_app() -> FastAPI:
     def api_content_sources(
         _: str = Depends(require_user),
     ) -> JSONResponse:
-        """Get available content sources."""
+        """Get available content sources with display names."""
+        display_names = content_source_factory.get_source_display_names()
         return JSONResponse({
-            "sources": content_source_factory.get_available_sources()
+            "sources": content_source_factory.get_available_sources(),
+            "display_names": display_names
         })
 
     @app.get("/api/month", response_class=JSONResponse)
@@ -1541,7 +1543,12 @@ def create_app() -> FastAPI:
     def page_signup(request: Request):
         """Render the public subscriber signup page."""
         sources = content_source_factory.get_available_sources()
-        return templates.TemplateResponse("signup.html", {"request": request, "sources": sources})
+        display_names = content_source_factory.get_source_display_names()
+        return templates.TemplateResponse("signup.html", {
+            "request": request,
+            "sources": sources,
+            "display_names": display_names
+        })
 
     @app.post("/api/public/unsubscribe", response_class=JSONResponse)
     async def api_public_unsubscribe(request: Request) -> JSONResponse:

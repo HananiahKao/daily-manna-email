@@ -26,6 +26,13 @@ class Stmn1ContentSource(ContentSource):
     def __init__(self, base_url: str = DEFAULT_STMN1_BASE):
         self.base_url = base_url
 
+    @classmethod
+    def get_display_name(cls, language: str = "zh") -> str:
+        """Return user-friendly display name."""
+        if language == "zh":
+            return "聖經之旅"
+        return "Bible Journey"
+
     def get_source_name(self) -> str:
         return "stmn1"
 

@@ -41,6 +41,13 @@ SECTION_MARKERS = list(WEEKDAY_LABELS.keys()) + ["【週四、週五】"]
 class WixContentSource(ContentSource):
     """Content source implementation for the Wix 'Morning Revival' site."""
 
+    @classmethod
+    def get_display_name(cls, language: str = "zh") -> str:
+        """Return user-friendly display name."""
+        if language == "zh":
+            return "晨興聖言"
+        return "Morning Revival"
+
     def get_source_name(self) -> str:
         return "wix"
 

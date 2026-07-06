@@ -41,7 +41,7 @@
                 <select id="source" name="source" required>
                     <option value="">-- Select a source --</option>
                     {% for source in sources %}
-                    <option value="{{ source }}">{{ source }}</option>
+                    <option value="{{ source }}">{{ display_names.get(source, source) }}</option>
                     {% endfor %}
                 </select>
             </div>
