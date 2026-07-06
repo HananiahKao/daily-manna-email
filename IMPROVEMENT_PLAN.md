@@ -24,9 +24,11 @@
 - [x] **2.3** Subscriber onboarding flow ✅
 - [x] **2.4** (Bonus) Instant test send button in dashboard ✅
 - [x] **2.5** Add display names to content sources (Polish) ✅
+  - Auto-disambiguates when multiple sources share same display name
+  - Signup shows Chinese titles; admin dashboard shows technical names
 - [ ] **2.6** Disable EZOE content source (Polish)
 
-**Phase 2 Progress:** 4/4 core tasks complete (100%) ✅ | 2/2 polish tasks pending
+**Phase 2 Progress:** 4/4 core + 1/2 polish complete (83%) | 1 polish task pending (2.6)
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
 - [ ] **3.1** Enhance job history dashboard
