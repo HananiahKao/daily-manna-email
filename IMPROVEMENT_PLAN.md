@@ -23,8 +23,10 @@
 - [x] **2.2** Add subscriber management API endpoints ✅
 - [x] **2.3** Subscriber onboarding flow ✅
 - [x] **2.4** (Bonus) Instant test send button in dashboard ✅
+- [x] **2.5** Add display names to content sources (Polish) ✅
+- [ ] **2.6** Disable EZOE content source (Polish)
 
-**Phase 2 Progress:** 4/4 tasks complete (100%) ✅ COMPLETE
+**Phase 2 Progress:** 4/4 core tasks complete (100%) ✅ | 2/2 polish tasks pending
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
 - [ ] **3.1** Enhance job history dashboard
@@ -244,6 +246,59 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 - Reduce testing burden during Phase 2 validation
 
 **Effort:** ~4 hours
+
+---
+
+### Task 2.5: Add Display Names to Content Sources
+**Status:** NOT STARTED  
+**P/S:** P=2, S=2 (UX improvement for signup form)
+
+**Purpose:** Show user-friendly Chinese names instead of technical identifiers in signup form.
+
+**Requirements:**
+- Add `get_display_name()` class method to each content source
+- Signup form uses display names instead of source IDs
+- Dashboard/admin still uses technical names (ezoe, wix, stmn1) for clarity
+- Mapping:
+  - `wix` → "晨興聖言" (Morning Revival)
+  - `stmn1` → "聖經之旅" (Bible Journey)
+  - `ezoe` → "聖經之旅" (Bible Journey - alternative source, disabled)
+
+**Implementation:**
+- Modify each content source class: `ezoe_content_source.py`, `wix_content_source.py`, `stmn1_content_source.py`
+- Update `/subscribe` page to use `source.get_display_name()` instead of source ID
+- No database changes needed
+
+**Files:**
+- `ezoe_content_source.py`, `wix_content_source.py`, `stmn1_content_source.py` - Add `get_display_name()`
+- `app/templates/dashboard.html` - Update signup form to use display names
+
+**Effort:** ~1 hour
+
+---
+
+### Task 2.6: Disable EZOE Content Source
+**Status:** NOT STARTED  
+**P/S:** P=1, S=2 (required - EZOE blocked by anti-bot on production)
+
+**Purpose:** Hide EZOE as signup option and prevent new subscriptions, since it's blocked in production. STMN1 serves same content as fallback.
+
+**Requirements:**
+- Add environment variable: `DISABLED_CONTENT_SOURCES=ezoe`
+- Signup form filters out disabled sources
+- API rejects signup for disabled sources
+- Existing EZOE subscribers remain in database (soft delete via `.active` field if needed later)
+
+**Implementation:**
+- Modify `content_source_factory.py:get_available_sources()` to filter by `DISABLED_CONTENT_SOURCES` env var
+- Existing validation in `subscriber_manager.py` automatically rejects disabled sources
+- Set `DISABLED_CONTENT_SOURCES=ezoe` in production .env
+
+**Files:**
+- `content_source_factory.py` - Add disabled sources filtering
+- `.env.example` - Document DISABLED_CONTENT_SOURCES variable
+
+**Effort:** ~0.5 hours
 
 ---
 
