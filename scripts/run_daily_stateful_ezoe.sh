@@ -72,7 +72,10 @@ if "$PYTHON_BIN" sjzl_daily_email.py; then
   }
 }
 EOF
-  "$PYTHON_BIN" schedule_tasks.py mark-sent --date "$TARGET_DATE"
+  # Only mark as sent if NOT in test mode (test sends should be side-effect-free)
+  if ! [[ "${TEST_MODE:-}" == "1" ]]; then
+    "$PYTHON_BIN" schedule_tasks.py mark-sent --date "$TARGET_DATE"
+  fi
 else
   # Enhanced error JSON output
   cat <<EOF
