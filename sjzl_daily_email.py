@@ -448,7 +448,7 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
 
 # -------- Email sending --------
 
-def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, content_source: TypingOptional[str] = None, is_test: bool = False) -> Dict[str, str]:
+def send_email(subject: str, body: str, recipients: List[str], html_body: TypingOptional[str] = None, is_test: bool = False) -> Dict[str, str]:
     """
     Send email using Gmail API to each recipient individually.
     Skips recipients already sent to today (idempotent recovery).
@@ -457,54 +457,23 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
     Args:
         subject: Email subject
         body: Plain text email body
+        recipients: List of email addresses to send to (caller determines recipients)
         html_body: Optional HTML email body
-        content_source: Content source ('ezoe' or 'wix') to determine recipients from database
         is_test: If True, mark email as test (prepend [SYSTEM TEST] to subject, add badge to body)
                  Also checked via TEST_MODE environment variable
 
     Returns:
         Dict[str, str]: {recipient_email: gmail_message_id} for successfully sent emails
     """
+    if not recipients:
+        raise ValueError("recipients list cannot be empty")
+
     email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
     today = sm.taipei_today()
 
     # Check TEST_MODE environment variable (set by test-send API)
     if os.getenv("TEST_MODE", "").lower() in ("1", "true", "yes"):
         is_test = True
-
-    # Debug mode: send to EMAIL_FROM instead of subscribers
-    debug_mode = os.getenv("DEBUG_MODE") not in (None, "", "0", "false", "False")
-    if debug_mode:
-        recipients = [email_from] if email_from else []
-    else:
-        # Get recipient source configuration (default: database)
-        recipient_source = os.getenv("RECIPIENT_SOURCE", "db").strip().lower()
-
-        if recipient_source == "db":
-            # Primary mode: RECIPIENT_SOURCE=db - Use database subscribers
-            if not content_source:
-                raise ValueError("content_source must be specified to fetch subscribers from database")
-            try:
-                from app.subscriber_manager import get_subscribers
-                recipients = get_subscribers(content_source)
-                if not recipients:
-                    raise ValueError(f"No active subscribers found for content source: {content_source}")
-            except Exception as e:
-                logger.error("Failed to get subscribers from database: %s", e)
-                raise
-        elif recipient_source == "email":
-            # Fallback mode (deprecated): RECIPIENT_SOURCE=email - Use EMAIL_TO env var
-            email_to_raw = os.getenv("EMAIL_TO", "")
-            recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
-            if not recipients:
-                raise ValueError("RECIPIENT_SOURCE=email but EMAIL_TO is empty or not set.")
-            logger.warning("Using EMAIL_TO env var (RECIPIENT_SOURCE=email). Please migrate to database-backed subscribers.")
-        else:
-            # Invalid configuration
-            raise ValueError(f"Invalid RECIPIENT_SOURCE value: '{recipient_source}'. Allowed values: 'db', 'email'.")
-
-    if not recipients:
-        raise ValueError("No recipients configured.")
 
     # Modify subject and html_body for test sends
     if is_test:
@@ -757,7 +726,15 @@ def run_once() -> int:
         # Convert visible content to zh-TW (server side) for both HTML and text
         html_with_css = _maybe_convert_zh_cn_to_zh_tw(html_with_css)
         body = _maybe_convert_zh_cn_to_zh_tw(body)
-        recipients = send_email(subject, body, html_body=html_with_css, content_source=active_source.get_source_name())
+        from app.subscriber_manager import get_subscribers
+        source_name = active_source.get_source_name()
+        recipients_list = get_subscribers(source_name)
+        # In DEBUG_MODE, send only to EMAIL_FROM instead of subscribers
+        debug_mode = _debug_enabled()
+        if debug_mode:
+            email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
+            recipients_list = [email_from] if email_from else recipients_list
+        recipients = send_email(subject, body, recipients=recipients_list, html_body=html_with_css)
         logger.info("HTML email (ezoe) sent to %d recipients", len(recipients))
         return 0
     # Allow override for testing SMTP without discovery/fetch variability
@@ -808,7 +785,14 @@ def run_once() -> int:
     _debug_preview("SJZL_SUBJECT", subject)
     _debug_preview("SJZL_BODY", body)
 
-    recipients = send_email(subject, body, html_body=html_body, content_source="ezoe")
+    from app.subscriber_manager import get_subscribers
+    recipients_list = get_subscribers("ezoe")
+    # In DEBUG_MODE, send only to EMAIL_FROM instead of subscribers
+    debug_mode = _debug_enabled()
+    if debug_mode:
+        email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
+        recipients_list = [email_from] if email_from else recipients_list
+    recipients = send_email(subject, body, recipients=recipients_list, html_body=html_body)
     logger.info("Email sent to %d recipients", len(recipients))
     return 0
 

@@ -3,8 +3,9 @@ from unittest.mock import patch, MagicMock
 import sjzl_daily_email as sjzl
 
 
+@patch("app.subscriber_manager.get_subscribers")
 @patch("sjzl_daily_email.get_gmail_service")
-def test_email_pipeline_e2e_sjzl_mode(mock_get_gmail_service, monkeypatch):
+def test_email_pipeline_e2e_sjzl_mode(mock_get_gmail_service, mock_get_subscribers, monkeypatch):
     """End-to-end test of the email sending pipeline for SJZL mode.
 
     Tests the full flow from content discovery to email sending,
@@ -13,9 +14,10 @@ def test_email_pipeline_e2e_sjzl_mode(mock_get_gmail_service, monkeypatch):
     # Set up environment variables
     monkeypatch.setenv("SMTP_USER", "test@example.com")
     monkeypatch.setenv("EMAIL_FROM", "sender@example.com")
-    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
-    monkeypatch.setenv("EMAIL_TO", "recipient1@example.com,recipient2@example.com")
     monkeypatch.setenv("DEBUG_MODE", "1")
+
+    # Mock get_subscribers to return test recipients
+    mock_get_subscribers.return_value = ["recipient1@example.com", "recipient2@example.com"]
 
     # Mock the Gmail service
     mock_service = MagicMock()
@@ -29,7 +31,8 @@ def test_email_pipeline_e2e_sjzl_mode(mock_get_gmail_service, monkeypatch):
 
     # Assert that Gmail API was called to send email
     mock_get_gmail_service.assert_called_once()
-    mock_service.users.return_value.messages.return_value.send.assert_called_once()
+    # In DEBUG_MODE, sends only to EMAIL_FROM (1 call), not to all recipients
+    assert mock_service.users.return_value.messages.return_value.send.call_count == 1
 
     # Verify the email content
     send_call = mock_service.users.return_value.messages.return_value.send.call_args
@@ -121,7 +124,8 @@ def test_email_pipeline_e2e_ezoe_mode(monkeypatch, fs):
     # Patch the module-level variable directly
     with patch.object(sjzl, "get_gmail_service", mock_get_gmail), \
          patch.object(sjzl, "find_latest_lesson"), \
-         patch("content_source_factory.get_active_source", return_value=mock_source):
+         patch("content_source_factory.get_active_source", return_value=mock_source), \
+         patch("app.subscriber_manager.get_subscribers", return_value=["recipient@example.com"]):
         
         # Execute the full pipeline
         result = sjzl.run_once()
