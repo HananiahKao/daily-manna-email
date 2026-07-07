@@ -29,8 +29,9 @@
 - [x] **2.6** Disable EZOE content source (Polish) ✅
 - [x] **2.7** Refactor send_email() to require recipients parameter (Polish) ✅
 - [ ] **2.8** Admin dashboard indicators for disabled sources (Polish)
+- [ ] **2.9** Make test sends completely side-effect-free (Polish)
 
-**Phase 2 Progress:** 4/4 core + 3/4 polish complete (87.5%) | 1 polish task pending
+**Phase 2 Progress:** 4/4 core + 3/5 polish complete (80%) | 2 polish tasks pending
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
 - [ ] **3.1** Enhance job history dashboard
@@ -339,6 +340,55 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 - `schedule_tasks.py` - Update callers
 
 **Effort:** ~2 hours
+
+---
+
+### Task 2.9: Make test sends completely side-effect-free
+**Status:** NOT STARTED  
+**P/S:** P=3, S=3 (production safety, critical for reliability)
+
+**Purpose:** Ensure test sends never interfere with production sends by avoiding all file modifications.
+
+**Problem:** 
+- Current test sends modify schedule files (state/)
+- This blocks production sends from running
+- Test sends should be invisible to production
+- Goal: run unlimited test sends without affecting production schedule
+
+**Solution:**
+- Identify all files touched by send_email in test mode
+- Ensure test mode:
+  - Sends emails (only side effect)
+  - Does NOT touch delivery records
+  - Does NOT touch schedule files
+  - Does NOT modify state/
+  - Does NOT modify any production files
+- Add test to verify send_email is side-effect-free in test mode
+
+**Implementation:**
+- Create `test_send_email_side_effects.py` to verify no file modifications
+- Check: Does send_email modify any files when is_test=True?
+- Check: Does send_email modify any database tables when is_test=True?
+- Remove any file I/O from test send path
+- Document test send behavior: "send only, no side effects"
+
+**Behavior:**
+```python
+# Test send with is_test=True should:
+# ✓ Send email via Gmail API
+# ✗ NOT modify delivery_tracker database
+# ✗ NOT modify schedule files
+# ✗ NOT modify state/ directory
+# ✗ NOT modify any files
+```
+
+**Test case:**
+- Send test email
+- Verify no files were created/modified
+- Verify no database writes occurred
+- Verify email was sent
+
+**Effort:** ~1 hour
 
 ---
 
