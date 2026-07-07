@@ -344,51 +344,64 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 ---
 
 ### Task 2.9: Make test sends completely side-effect-free
-**Status:** NOT STARTED  
-**P/S:** P=3, S=3 (production safety, critical for reliability)
+**Status:** IN PROGRESS  
+**P/S:** P=3, S=3 (production safety, CRITICAL for reliability)
 
-**Purpose:** Ensure test sends never interfere with production sends by avoiding all file modifications.
+**Purpose:** Ensure test sends NEVER modify schedule status or any production state.
+
+**Root Cause Identified:** 
+- Test sends are changing schedule entry status to "sent"
+- This blocks production sends from running the same day
+- Users must manually revert to "pending" after each test
+- TEST_MODE flag doesn't prevent schedule mutations
 
 **Problem:** 
-- Current test sends modify schedule files (state/)
-- This blocks production sends from running
-- Test sends should be invisible to production
-- Goal: run unlimited test sends without affecting production schedule
+- Test send marks schedule as "sent" (blocking production)
+- Can't run multiple test sends without manual intervention
+- Test sends are NOT side-effect-free (they modify production state)
+- Goal: run unlimited test sends without touching schedule or any production files
 
 **Solution:**
-- Identify all files touched by send_email in test mode
+- Add explicit check: skip schedule updates when TEST_MODE=1
 - Ensure test mode:
-  - Sends emails (only side effect)
-  - Does NOT touch delivery records
-  - Does NOT touch schedule files
-  - Does NOT modify state/
-  - Does NOT modify any production files
-- Add test to verify send_email is side-effect-free in test mode
+  - ✓ Sends emails (only side effect)
+  - ✗ Does NOT change schedule status
+  - ✗ Does NOT modify schedule files
+  - ✗ Does NOT touch delivery records
+  - ✗ Does NOT modify state/
+  - ✗ Does NOT modify any production files
 
 **Implementation:**
-- Create `test_send_email_side_effects.py` to verify no file modifications
-- Check: Does send_email modify any files when is_test=True?
-- Check: Does send_email modify any database tables when is_test=True?
-- Remove any file I/O from test send path
-- Document test send behavior: "send only, no side effects"
+- Find all places that call `mark_sent()` 
+- Add guard: `if not os.getenv("TEST_MODE"): mark_sent(...)`
+- Find all places that update schedule entry status
+- Add TEST_MODE check before any schedule updates
+- Update cron_runner._execute_job_from_rule() to skip schedule saves in TEST_MODE
+- Create verification test to ensure schedule is unmodified after test send
+
+**Key Locations to Protect:**
+- schedule_manager.mark_sent()
+- cron_runner.save_schedule() calls
+- Any schedule.entry.status updates
 
 **Behavior:**
 ```python
-# Test send with is_test=True should:
-# ✓ Send email via Gmail API
-# ✗ NOT modify delivery_tracker database
-# ✗ NOT modify schedule files
-# ✗ NOT modify state/ directory
-# ✗ NOT modify any files
+# When TEST_MODE=1:
+# ✓ Email sent via Gmail API  
+# ✗ Schedule NOT marked as sent
+# ✗ Schedule status stays "pending"
+# ✓ Can run unlimited test sends in one day
+# ✓ Production send works immediately after test send
 ```
 
 **Test case:**
+- Set TEST_MODE=1
 - Send test email
-- Verify no files were created/modified
-- Verify no database writes occurred
-- Verify email was sent
+- Verify schedule entry status is still "pending"
+- Verify no schedule files were modified
+- Verify can send test again (no "already sent" blocking)
 
-**Effort:** ~1 hour
+**Effort:** ~1.5 hours
 
 ---
 
