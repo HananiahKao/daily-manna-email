@@ -38,6 +38,11 @@ def get_active_source() -> ContentSource:
     return get_content_source(source_name)
 
 
+def get_all_sources() -> list:
+    """Returns all content source names (available + disabled) - for admin use only."""
+    return list(CONTENT_SOURCES.keys())
+
+
 def get_available_sources() -> list:
     """Returns a list of all available content source names (excluding disabled sources)."""
     disabled_raw = os.getenv("DISABLED_CONTENT_SOURCES", "").strip()
@@ -45,16 +50,27 @@ def get_available_sources() -> list:
     return [s for s in CONTENT_SOURCES.keys() if s.lower() not in disabled]
 
 
-def get_source_display_names(language: str = "zh") -> dict:
-    """Returns {source_id: display_name} for all available sources.
+def get_disabled_sources() -> list:
+    """Returns list of disabled content source names."""
+    disabled_raw = os.getenv("DISABLED_CONTENT_SOURCES", "").strip()
+    disabled = {s.strip().lower() for s in disabled_raw.split(",") if s.strip()}
+    return [s for s in CONTENT_SOURCES.keys() if s.lower() in disabled]
+
+
+def get_source_display_names(language: str = "zh", include_disabled: bool = False) -> dict:
+    """Returns {source_id: display_name} for sources.
+
+    Args:
+        language: "zh" for Chinese, "en" for English
+        include_disabled: If True, include disabled sources. If False, only available sources.
 
     If multiple sources have the same display name, appends source ID in parentheses
     to disambiguate (e.g., "聖經之旅 (stmn1)" vs "聖經之旅 (ezoe)").
     """
-    available = get_available_sources()
+    sources = get_all_sources() if include_disabled else get_available_sources()
     raw_names = {
         source_id: CONTENT_SOURCES[source_id].get_display_name(language)
-        for source_id in available
+        for source_id in sources
     }
 
     # Check for duplicate display names

@@ -716,13 +716,49 @@
         const select = document.getElementById("content-source-select");
         if (select) {
           select.innerHTML = "";
+
+          // Store status info for later reference
+          select.sourceStatus = data.status;
+
           data.sources.forEach(source => {
+            const sourceStatus = data.status[source];
+            const displayName = sourceStatus.display_name;
+            const isDisabled = sourceStatus.disabled;
+
             const option = document.createElement("option");
             option.value = source;
-            option.textContent = source.charAt(0).toUpperCase() + source.slice(1);
+            option.textContent = isDisabled ? `${displayName} ⚠️ DISABLED` : displayName;
             select.appendChild(option);
           });
-          select.value = this.currentContentSource;
+
+          // Add listener to update badge when selection changes
+          select.addEventListener("change", () => {
+            const badge = document.getElementById("disabled-sources-badge");
+            const selectedSource = select.value;
+            const selectedStatus = select.sourceStatus[selectedSource];
+
+            if (badge) {
+              if (selectedStatus?.disabled) {
+                const displayName = selectedStatus.display_name;
+                badge.innerHTML = `<span style="color: #dc2626; font-weight: 500; font-size: 0.95em;">⚠️ Warning: ${displayName} is disabled. Entries in this schedule won't be sent.</span>`;
+              } else {
+                badge.innerHTML = "";
+              }
+            }
+          });
+
+          // Set default value, prefer first available if current is disabled
+          if (this.currentContentSource) {
+            select.value = this.currentContentSource;
+          } else {
+            const firstAvailable = data.sources.find(s => !data.status[s]?.disabled);
+            if (firstAvailable) {
+              select.value = firstAvailable;
+            }
+          }
+
+          // Trigger change event to update badge on load
+          select.dispatchEvent(new Event("change"));
         }
         return data.sources;
       } catch (error) {

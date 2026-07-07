@@ -573,15 +573,35 @@ def create_app() -> FastAPI:
         }
         return templates.TemplateResponse(request, "dashboard.html", context)
 
-    @app.get("/api/content-sources", response_class=JSONResponse)
-    def api_content_sources(
-        _: str = Depends(require_user),
-    ) -> JSONResponse:
-        """Get available content sources with display names."""
+    @app.get("/api/public/content-sources", response_class=JSONResponse)
+    def api_public_content_sources() -> JSONResponse:
+        """Get available content sources with display names (public, no auth required)."""
         display_names = content_source_factory.get_source_display_names()
         return JSONResponse({
             "sources": content_source_factory.get_available_sources(),
             "display_names": display_names
+        })
+
+    @app.get("/api/content-sources", response_class=JSONResponse)
+    def api_admin_content_sources(
+        _: str = Depends(require_user),
+    ) -> JSONResponse:
+        """Get all content sources for admin dashboard, marking disabled ones."""
+        all_sources = content_source_factory.get_all_sources()
+        disabled_sources = set(content_source_factory.get_disabled_sources())
+        display_names = content_source_factory.get_source_display_names(include_disabled=True)
+
+        source_status = {
+            source: {
+                "display_name": display_names.get(source, source),
+                "disabled": source in disabled_sources
+            }
+            for source in all_sources
+        }
+
+        return JSONResponse({
+            "sources": all_sources,
+            "status": source_status
         })
 
     @app.get("/api/month", response_class=JSONResponse)
