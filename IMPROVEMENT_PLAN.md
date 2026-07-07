@@ -28,10 +28,10 @@
   - Signup shows Chinese titles; admin dashboard shows technical names
 - [x] **2.6** Disable EZOE content source (Polish) ✅
 - [x] **2.7** Refactor send_email() to require recipients parameter (Polish) ✅
-- [ ] **2.8** Admin dashboard indicators for disabled sources (Polish)
+- [x] **2.8** Admin dashboard indicators for disabled sources (Polish) ✅
 - [x] **2.9** Make test sends completely side-effect-free (Polish) ✅
 
-**Phase 2 Progress:** 4/4 core + 4/5 polish complete (90%) | 1 polish task pending (Phase 2.8)
+**Phase 2 Progress:** 4/4 core + 5/5 polish complete (100%) ✅ COMPLETE
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
 - [ ] **3.1** Enhance job history dashboard
@@ -56,7 +56,7 @@
 
 ---
 
-**Overall Progress:** 11/18 tasks complete (61%) | ⏳ Phase 3 Next
+**Overall Progress:** 15/20 tasks complete (75%) | Phase 2 ✅ COMPLETE | ⏳ Phase 3 Next
 
 ---
 
