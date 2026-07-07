@@ -29,9 +29,9 @@
 - [x] **2.6** Disable EZOE content source (Polish) ✅
 - [x] **2.7** Refactor send_email() to require recipients parameter (Polish) ✅
 - [ ] **2.8** Admin dashboard indicators for disabled sources (Polish)
-- [ ] **2.9** Make test sends completely side-effect-free (Polish)
+- [x] **2.9** Make test sends completely side-effect-free (Polish) ✅
 
-**Phase 2 Progress:** 4/4 core + 3/5 polish complete (80%) | 2 polish tasks pending
+**Phase 2 Progress:** 4/4 core + 4/5 polish complete (90%) | 1 polish task pending (Phase 2.8)
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
 - [ ] **3.1** Enhance job history dashboard
