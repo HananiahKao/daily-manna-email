@@ -27,10 +27,10 @@
   - Auto-disambiguates when multiple sources share same display name
   - Signup shows Chinese titles; admin dashboard shows technical names
 - [x] **2.6** Disable EZOE content source (Polish) ✅
-- [ ] **2.7** Refactor send_email() to require recipients parameter (Polish)
+- [x] **2.7** Refactor send_email() to require recipients parameter (Polish) ✅
 - [ ] **2.8** Admin dashboard indicators for disabled sources (Polish)
 
-**Phase 2 Progress:** 4/4 core + 2/4 polish complete (75%) | 2 polish tasks pending
+**Phase 2 Progress:** 4/4 core + 3/4 polish complete (87.5%) | 1 polish task pending
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
 - [ ] **3.1** Enhance job history dashboard
