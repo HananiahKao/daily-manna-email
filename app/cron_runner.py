@@ -49,6 +49,46 @@ class CronJobRunner:
         logger.addHandler(file_handler)
         logger.setLevel(logging.INFO)
 
+    def _extract_real_error_message(self, logs: List[str]) -> Optional[str]:
+        """Extract real error message from logs instead of generic 'Command failed'.
+
+        Searches for ERROR lines, exception messages, or meaningful failure messages
+        and returns the first one found. Falls back to None if no error found.
+        """
+        if not logs:
+            return None
+
+        # Look for lines with ERROR level or exception information
+        for i, line in enumerate(logs):
+            line_lower = line.lower()
+
+            # Check for ERROR log lines
+            if " error " in line_lower or "error:" in line_lower:
+                # Try to extract the actual error message
+                if ": " in line:
+                    error_part = line.split(": ", 1)[1].strip()
+                    if error_part and not error_part.startswith("Job "):
+                        return error_part
+                return line.strip()
+
+            # Check for exception types (RuntimeError, ValueError, etc)
+            if any(exc_type in line for exc_type in
+                   ["Error", "Exception", "Traceback", "raise ", "failed"]):
+                if "Traceback" not in line and "raise" not in line:
+                    continue
+                # Look ahead for the actual exception message
+                for j in range(i, min(i + 5, len(logs))):
+                    next_line = logs[j].strip()
+                    if next_line and not next_line.startswith("File "):
+                        if any(x in next_line for x in ["Error:", "error:", "Exception:"]):
+                            # Extract message after colon
+                            if ": " in next_line:
+                                return next_line.split(": ", 1)[1].strip()
+                            return next_line
+
+        # If no ERROR line found, return None to indicate generic message should be used
+        return None
+
     async def start(self) -> None:
         """Start the scheduler."""
         logger.info("Starting cron job scheduler")
@@ -309,7 +349,9 @@ class CronJobRunner:
                         }
                     )
                 else:
-                    error_msg = f"Command failed with exit code {exit_code}"
+                    # Phase 3.1: Extract real error message from logs (precise error extraction)
+                    real_error = self._extract_real_error_message(job_result.logs)
+                    error_msg = real_error or f"Command failed with exit code {exit_code}"
                     job_result.error_message = error_msg
                     job_result.logs.append(error_msg)
                     logger.error(f"Job {job_name} failed: {error_msg}")
@@ -332,7 +374,9 @@ class CronJobRunner:
             except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
-                error_msg = f"Job {job_name} timed out after {timeout} seconds"
+                # Phase 3.1: Try to extract real error before timeout message
+                real_error = self._extract_real_error_message(job_result.logs)
+                error_msg = real_error or f"Job {job_name} timed out after {timeout} seconds"
                 logger.error(error_msg)
                 job_result.error_message = error_msg
                 job_result.logs.append(error_msg)
@@ -354,7 +398,9 @@ class CronJobRunner:
                 raise Exception(error_msg)  # Raise exception to trigger retry
 
         except Exception as e:
-            error_msg = f"Job {job_name} failed with exception: {str(e)}"
+            # Phase 3.1: Try to extract real error from logs before using exception string
+            real_error = self._extract_real_error_message(job_result.logs)
+            error_msg = real_error or str(e) or f"Job {job_name} failed with exception"
             logger.error(error_msg)
             if not job_result.error_message:  # Don't overwrite existing error
                 job_result.error_message = error_msg

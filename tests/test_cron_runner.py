@@ -329,6 +329,7 @@ class TestCronJobRunner:
             # Make wait_for raise TimeoutError
             with patch('app.cron_runner.asyncio.wait_for', side_effect=asyncio.TimeoutError):
                 mock_job_result = Mock()
+                mock_job_result.logs = []  # Initialize logs for error extraction
                 mock_start_job.return_value = mock_job_result
 
                 with pytest.raises(Exception, match="timed out"):
@@ -355,6 +356,7 @@ class TestCronJobRunner:
 
             mock_job_result = Mock()
             mock_job_result.max_retries = 0  # Simulate single attempt (no retries)
+            mock_job_result.logs = []  # Initialize logs for error extraction
             mock_start_job.return_value = mock_job_result
 
             with pytest.raises(Exception, match="Command failed with exit code 1"):
@@ -593,6 +595,7 @@ class TestGlobalCronRunner:
              patch.object(cron_runner.job_tracker, 'update_job') as mock_update_job:
 
             mock_job_result = Mock()
+            mock_job_result.logs = []  # Initialize logs for error extraction
             mock_start_job.return_value = mock_job_result
 
             # Make wait_for raise TimeoutError
@@ -614,6 +617,7 @@ class TestGlobalCronRunner:
              patch.object(cron_runner.job_tracker, 'update_job') as mock_update_job:
 
             mock_job_result = Mock()
+            mock_job_result.logs = []  # Initialize logs for error extraction
             mock_start_job.return_value = mock_job_result
 
             with pytest.raises(Exception, match="Command not found"):

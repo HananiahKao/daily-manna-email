@@ -914,6 +914,18 @@
                 <span class="job-info-label">Status:</span>
                 <span class="job-info-value status-indicator ${statusClass}">${outcome}</span>
               </div>
+              ${execution.error_message ? `
+              <div class="job-error-section">
+                <div class="error-header">Error:</div>
+                <div class="error-message">${escapeHtml(execution.error_message)}</div>
+              </div>
+              ` : ''}
+              ${execution.exit_code !== null ? `
+              <div class="job-info-row">
+                <span class="job-info-label">Exit Code:</span>
+                <span class="job-info-value">${execution.exit_code}</span>
+              </div>
+              ` : ''}
               ${execution.end_time ? `
               <div class="job-info-row">
                 <span class="job-info-label">Duration:</span>
