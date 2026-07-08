@@ -34,20 +34,23 @@
 **Phase 2 Progress:** 4/4 core + 5/5 polish complete (100%) ✅ COMPLETE
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
+- [ ] **3.0** Extract error messages from job logs
 - [ ] **3.1** Enhance job history dashboard
 - [ ] **3.2** Email delivery status page (user-facing)
-- [ ] **3.3** Dashboard UX improvements
+- [ ] **3.3** Real-time dashboard updates with AJAX
+- [ ] **3.4** Dashboard UX improvements
 
-**Phase 3 Progress:** 0/3 tasks complete (0%)
+**Phase 3 Progress:** 0/5 tasks complete (0%)
 
 ### Phase 4: Email Formatting & Polish (September) — P=2–3, S=2–3
-- [ ] **4.0** Fix persistent messages in dashboard UI
-- [ ] **4.1** Email HTML/CSS improvements
-- [ ] **4.2** Expand content sources (channel management)
-- [ ] **4.3** Documentation & architecture guide
-- [ ] **4.4** Deployment & scaling preparation
+- [ ] **4.0** Full mobile support for dashboard
+- [ ] **4.1** Fix persistent messages in dashboard UI
+- [ ] **4.2** Email HTML/CSS improvements
+- [ ] **4.3** Expand content sources (channel management)
+- [ ] **4.4** Documentation & architecture guide
+- [ ] **4.5** Deployment & scaling preparation
 
-**Phase 4 Progress:** 0/5 tasks complete (0%)
+**Phase 4 Progress:** 0/6 tasks complete (0%)
 
 ### Phase 5: Testing Infrastructure (Post-September)
 - Local production orchestrator (Docker Compose simulation of Render)
@@ -56,7 +59,7 @@
 
 ---
 
-**Overall Progress:** 15/20 tasks complete (75%) | Phase 2 ✅ COMPLETE | ⏳ Phase 3 Next
+**Overall Progress:** 15/25 tasks complete (60%) | Phase 2 ✅ COMPLETE | ⏳ Phase 3 Next (0/5 started)
 
 ---
 
@@ -443,6 +446,62 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 **Goal:** Improve admin visibility and system monitoring.  
 **P/S Ratings:** P=2–3, S=2 (nice-to-have but valuable for maintainability)
 
+### Task 3.0: Data Integrity & Error Reporting (7 Verified Issues)
+**Status:** NOT STARTED  
+**P/S:** P=2, S=1 (data accuracy, dashboard reliability)
+
+**Goal:** Fix 7 verified data integrity issues that affect dashboard accuracy and user experience.
+
+**7 Issues to Fix:**
+
+**CRITICAL (1):**
+1. **Status vs exit code contradiction** — `cron_runner.py:327-329`
+   - During retries, dashboard shows status="running" + exit_code=1 simultaneously (confusing)
+   - Fix: Only set exit_code when status is "success" or "failed", not during intermediate retries
+
+**HIGH (4):**
+2. **Missing metadata for timeout/exception** — `cron_runner.py:340-346, 356-362`
+   - Timeout and exception failures lack debug metadata (command, timeout, stream lengths)
+   - Fix: Add same `metadata` dict to all update_job() calls (not just exit_code failures)
+
+3. **Recipient count placeholder** — `run_daily_stateful_ezoe.sh:70`
+   - Shows string "configured_via_env" instead of actual recipient count
+   - Fix: Extract actual count from EMAIL_TO env var or delivery result
+
+4. **Partial delivery as success** — `sjzl_daily_email.py:549-553, 739, 796`
+   - Job returns exit 0 even if 70% of recipients fail (3/10 sent, 7/10 failed)
+   - Fix: Return exit code 2 (partial success) or 1 (failure) based on delivery rate
+
+5. **Race condition in manual job run** — `cron_runner.py:448`
+   - Job executed but may return None if not yet in history
+   - Fix: Call `get_recent_executions()` once, store result, reuse it
+
+**MEDIUM (2):**
+6. **Duplicate error logging** — `cron_runner.py:337-338, 341-342`
+   - Timeout errors appear twice in logs (append + extend duplication)
+   - Fix: Pass complete job_result.logs to update_job() instead of [error_msg]
+
+7. **30-day data loss** — `job_tracker.py:120-123`
+   - Jobs older than 30 days silently deleted on restart (no audit trail)
+   - Fix: Document retention policy OR implement archive rotation OR extend to 90 days
+
+**Files to Modify:**
+- `app/cron_runner.py` — Retry state, metadata, race condition, error logging
+- `run_daily_stateful_ezoe.sh` — Recipient count placeholder
+- `sjzl_daily_email.py` — Partial delivery handling
+- `app/job_tracker.py` — Data retention policy
+
+**Impact:**
+- Dashboard displays accurate job status (no contradictions)
+- Better debugging info for timeout/exception failures
+- Partial delivery failures are visible/alertable
+- No silent data loss of historical jobs
+- Cleaner, non-duplicate logs
+
+**Effort:** ~4 hours (comprehensive fix across 4 files)
+
+---
+
 ### Task 3.1: Enhance Job History Dashboard
 **Status:** EXISTS (partial)  
 **P/S:** P=2, S=2  
@@ -484,17 +543,52 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 
 ---
 
-### Task 3.3: Dashboard UX Improvements
+### Task 3.3: Real-Time Dashboard Updates with AJAX
+**Status:** NOT STARTED  
+**P/S:** P=2, S=2 (UX improvement, avoids page reloads)
+
+**Problem:** Dashboard reloads entire page when updating schedule entries or running actions, poor user experience.
+
+**Solution:**
+- Replace full page reloads with AJAX fetch calls
+- Real-time updates without leaving the page
+- Show loading states during requests
+- Display success/error messages inline
+- Preserve scroll position and form state
+
+**Implementation:**
+- Refactor dispatch_rules.js to use fetch() instead of form submission
+- Add loading spinners during async operations
+- Update modal feedback handlers for AJAX responses
+- Ensure error states display clearly
+
+**Files:**
+- `app/static/dispatch_rules.js` - AJAX refactor for rule updates
+- `app/static/calendar.js` - AJAX for schedule entry updates
+- `app/static/test_send.js` - Already uses fetch, ensure consistency
+- `app/templates/dashboard.html` - Add loading states/spinners
+
+**Benefits:**
+- Smooth UX: no page reload flicker
+- Faster feedback: immediate visual response
+- Preserves context: user stays in same view
+- Better for mobile: less data bandwidth
+
+**Effort:** ~6 hours
+
+---
+
+### Task 3.4: Dashboard UX Improvements
 **Status:** NOT STARTED  
 **P/S:** P=3, S=3 (polish, low priority)  
 
 **Improvements:**
-- Responsive design (mobile-friendly dashboard)
 - Dark mode support (cosmetic)
-- Loading states and spinners
-- Better error messages in forms
+- Refined loading states and spinners
+- Better error message styling
+- Form validation feedback
 
-**Effort:** ~8 hours (defer to Phase 4 if constrained)
+**Effort:** ~8 hours (can defer to Phase 4 if constrained)
 
 ---
 
@@ -503,7 +597,44 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 **Goal:** Improve email appearance and prepare for launch.  
 **P/S Ratings:** P=2–3, S=2–3 (cosmetic but important for user experience)
 
-### Task 4.0: Fix Persistent Messages in Dashboard UI
+### Task 4.0: Full Mobile Support for Dashboard
+**Status:** NOT STARTED  
+**P/S:** P=2, S=3 (Polish: responsive mobile UI, phase 4 enhancement)
+
+**Problem:** Dashboard relies on keyboard shortcuts and desktop-style interactions; no mobile support for small screens.
+
+**Solution:**
+- Responsive design for tablets and phones
+- Touch-friendly buttons (larger touch targets)
+- Dropdown/mobile menu for navigation
+- Optimize modals for small screens
+- Mobile-friendly form inputs
+- Flexible layout (single column on mobile, multi-column on desktop)
+
+**Implementation:**
+- Add CSS media queries for mobile breakpoints (375px, 768px, 1024px)
+- Refactor navigation for mobile (hamburger menu on small screens)
+- Adjust modal sizing and positioning for mobile
+- Make action buttons more touch-friendly
+- Test on real mobile devices or browser DevTools
+
+**Files:**
+- `app/templates/dashboard.html` - Mobile-responsive layout
+- `app/static/css/` (new or existing) - Media queries and responsive styles
+- `app/static/calendar.js` - Mobile event handling
+- `app/static/dispatch_rules.js` - Mobile interaction patterns
+
+**Benefits:**
+- Dashboard usable on phones/tablets
+- Better accessibility (larger touch targets)
+- Professional appearance on all devices
+- Better mobile user experience
+
+**Effort:** ~12 hours (significant refactor)
+
+---
+
+### Task 4.1: Fix Persistent Messages in Dashboard UI
 **Status:** NOT STARTED  
 **P/S:** P=2, S=2 (DX improvement, affects all forms/modals)
 
@@ -634,14 +765,14 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 
 ## Effort Allocation
 
-**Total Estimated Effort:** ~85 hours
+**Total Estimated Effort:** ~103 hours
 
 | Phase | Hours | % |
 |-------|-------|---|
-| Phase 1 (Reliability) | 13 | 15% |
-| Phase 2 (Subscribers) | 24 | 28% |
-| Phase 3 (Dashboard) | 18 | 21% |
-| Phase 4 (Polish) | 30 | 36% |
+| Phase 1 (Reliability) | 13 | 13% |
+| Phase 2 (Subscribers) | 24 | 23% |
+| Phase 3 (Dashboard) | 24 | 23% |
+| Phase 4 (Polish) | 42 | 41% |
 
 **Realistic Weekly Pace:** ~5 hours/week = ~20 weeks total  
 **4-Month Window:** ~16 weeks available  
