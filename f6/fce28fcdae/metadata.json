@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.5",
+  "checkpoint_id": "f6fce28fcdae",
+  "strategy": "manual-commit",
+  "branch": "feature/email-activity-dashboard",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "scripts/run_daily_stateful_ezoe.sh",
+    "sjzl_daily_email.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f6/fce28fcdae/0/metadata.json",
+      "transcript": "/f6/fce28fcdae/0/full.jsonl",
+      "context": "/f6/fce28fcdae/0/context.md",
+      "content_hash": "/f6/fce28fcdae/0/content_hash.txt",
+      "prompt": "/f6/fce28fcdae/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10325,
+    "cache_creation_tokens": 2735227,
+    "cache_read_tokens": 143220307,
+    "output_tokens": 461693,
+    "api_call_count": 1240
+  }
+}
