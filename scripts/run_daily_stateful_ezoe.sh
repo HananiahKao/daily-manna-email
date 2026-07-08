@@ -54,7 +54,11 @@ export EZOE_SELECTOR="$SELECTOR"
 
 echo "Sending for $TARGET_DATE ($WEEKDAY_LABEL) selector: $EZOE_SELECTOR from $CONTENT_SOURCE"
 
-if "$PYTHON_BIN" sjzl_daily_email.py; then
+# Don't let set -e exit script before we capture exit code
+"$PYTHON_BIN" sjzl_daily_email.py || PYTHON_EXIT=$?
+PYTHON_EXIT=${PYTHON_EXIT:-0}
+
+if [[ $PYTHON_EXIT -eq 0 ]]; then
   # Enhanced JSON output for web app monitoring
   cat <<EOF
 {
@@ -67,7 +71,7 @@ if "$PYTHON_BIN" sjzl_daily_email.py; then
   "timestamp": "$(date -Iseconds)",
   "details": {
     "action": "sent_daily_email",
-    "recipient_count": "configured_via_env",
+    "recipient_count": "database_backed",
     "content_type": "daily_devotional"
   }
 }
@@ -77,7 +81,8 @@ EOF
     "$PYTHON_BIN" schedule_tasks.py mark-sent --date "$TARGET_DATE"
   fi
 else
-  # Enhanced error JSON output
+  # Issue #1 fix: Capture Python exit code BEFORE cat command
+  # Enhanced error JSON output with accurate exit code
   cat <<EOF
 {
   "job_type": "daily_email_send",
@@ -89,7 +94,7 @@ else
   "timestamp": "$(date -Iseconds)",
   "error": "email_send_failed",
   "details": {
-    "exit_code": $?,
+    "exit_code": $PYTHON_EXIT,
     "action": "attempted_send"
   }
 }

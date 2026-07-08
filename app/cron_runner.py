@@ -313,9 +313,8 @@ class CronJobRunner:
                     job_result.error_message = error_msg
                     job_result.logs.append(error_msg)
                     logger.error(f"Job {job_name} failed: {error_msg}")
-                    # Set status to failed only for single attempts (no retries)
+                    # Issue #1: Only set exit_code when setting final status (avoid contradictions)
                     update_kwargs = {
-                        "exit_code": exit_code,
                         "json_output": json_output,
                         "metadata": {
                             "command": command,
@@ -326,6 +325,7 @@ class CronJobRunner:
                     }
                     if job_result.max_retries == 0:
                         update_kwargs["status"] = "failed"
+                        update_kwargs["exit_code"] = exit_code
                     self.job_tracker.update_job(job_result, **update_kwargs)
                     raise Exception(error_msg)  # Raise exception to trigger retry
 
@@ -336,10 +336,17 @@ class CronJobRunner:
                 logger.error(error_msg)
                 job_result.error_message = error_msg
                 job_result.logs.append(error_msg)
-                # Set status to failed only for single attempts (no retries)
+                # Issue #2: Add metadata for timeout failures (consistency with exit_code failures)
+                # Issue #6: Pass accumulated logs, not [error_msg] (avoid duplication)
                 update_kwargs = {
                     "error_message": error_msg,
-                    "logs": [error_msg]
+                    "logs": job_result.logs,
+                    "metadata": {
+                        "command": command,
+                        "timeout": timeout,
+                        "stdout_length": len(complete_stdout) if 'complete_stdout' in locals() else 0,
+                        "stderr_length": len('\n'.join(stderr_buffer)) if stderr_buffer else 0
+                    }
                 }
                 if job_result.max_retries == 0:
                     update_kwargs["status"] = "failed"
@@ -352,10 +359,15 @@ class CronJobRunner:
             if not job_result.error_message:  # Don't overwrite existing error
                 job_result.error_message = error_msg
                 job_result.logs.append(error_msg)
-                # Set status to failed only for single attempts (no retries)
+                # Issue #2: Add metadata for exception failures (consistency)
+                # Issue #6: Pass accumulated logs, not [error_msg] (avoid duplication)
                 update_kwargs = {
                     "error_message": error_msg,
-                    "logs": [error_msg]
+                    "logs": job_result.logs,
+                    "metadata": {
+                        "command": command if 'command' in locals() else None,
+                        "timeout": timeout if 'timeout' in locals() else None,
+                    }
                 }
                 if job_result.max_retries == 0:
                     update_kwargs["status"] = "failed"
@@ -445,7 +457,9 @@ class CronJobRunner:
 
         # Execute the job's commands manually with tracking
         await self._execute_job_from_rule(rule)
-        return self.job_tracker.get_recent_executions(job_name, limit=1)[0] if self.job_tracker.get_recent_executions(job_name, limit=1) else None
+        # Issue #5: Fix race condition - store result instead of calling twice
+        recent = self.job_tracker.get_recent_executions(job_name, limit=1)
+        return recent[0] if recent else None
 
     def get_scheduler_status(self) -> Dict[str, Any]:
         """Get the current status of the scheduler."""

@@ -117,8 +117,8 @@ class JobTracker:
 
             for job_data in data.get("executions", []):
                 job = JobExecutionResult.from_dict(job_data)
-                # Only keep recent jobs (last 30 days)
-                if job.start_time > dt.datetime.now(tz=sm.TAIWAN_TZ) - dt.timedelta(days=30):
+                # Issue #7: Extend retention from 30 to 90 days to prevent data loss
+                if job.start_time > dt.datetime.now(tz=sm.TAIWAN_TZ) - dt.timedelta(days=90):
                     key = f"{job.job_name}_{job.start_time.isoformat()}"
                     self._current_jobs[key] = job
         except (json.JSONDecodeError, KeyError, ValueError):

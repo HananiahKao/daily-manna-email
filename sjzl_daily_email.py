@@ -736,7 +736,16 @@ def run_once() -> int:
             recipients_list = [email_from] if email_from else recipients_list
         recipients = send_email(subject, body, recipients=recipients_list, html_body=html_with_css)
         logger.info("HTML email (ezoe) sent to %d recipients", len(recipients))
-        return 0
+        # Issue #4: Exit code reflects delivery outcome
+        # Exit 0: All subscribers delivered (via send + backfill recovery)
+        # Exit 2: Partial delivery (some subscribers didn't receive)
+        # Exit 1: No subscribers received (complete failure)
+        if len(recipients) == len(recipients_list):
+            return 0  # All scheduled recipients received email
+        elif len(recipients) > 0:
+            return 2  # Partial success - some subscribers missing
+        else:
+            return 1  # No recipients received email
     # Allow override for testing SMTP without discovery/fetch variability
     test_url = os.getenv("TEST_LESSON_URL")
     if test_url:

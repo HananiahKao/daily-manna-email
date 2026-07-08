@@ -404,7 +404,7 @@ class TestJobTracker:
         storage_path = temp_state_dir / "job_history.json"
 
         # Create history with old and recent jobs
-        old_time = dt.datetime.now(tz=sm.TAIWAN_TZ) - dt.timedelta(days=40)  # Older than 30 days
+        old_time = dt.datetime.now(tz=sm.TAIWAN_TZ) - dt.timedelta(days=100)  # Older than 90 days (Issue #7)
         recent_time = dt.datetime.now(tz=sm.TAIWAN_TZ) - dt.timedelta(days=10)
 
         existing_data = {
@@ -563,15 +563,15 @@ class TestGlobalJobTracker:
         """Test history cleanup with edge cases."""
         storage_path = temp_state_dir / "job_history.json"
 
-        # Create history with jobs around the 30-day cutoff
-        cutoff_time = dt.datetime.now(tz=sm.TAIWAN_TZ) - dt.timedelta(days=30)
+        # Create history with jobs around the 90-day cutoff (Issue #7 extended from 30 to 90)
+        cutoff_time = dt.datetime.now(tz=sm.TAIWAN_TZ) - dt.timedelta(days=90)
 
         existing_data = {
             "last_updated": dt.datetime.now(tz=sm.TAIWAN_TZ).isoformat(),
             "executions": [
                 {
-                    "job_name": "within_30_days",
-                    "start_time": (cutoff_time + dt.timedelta(seconds=1)).isoformat(),  # Just within 30 days
+                    "job_name": "within_90_days",
+                    "start_time": (cutoff_time + dt.timedelta(seconds=1)).isoformat(),  # Just within 90 days
                     "end_time": (cutoff_time + dt.timedelta(seconds=1) + dt.timedelta(minutes=1)).isoformat(),
                     "status": "success",
                     "exit_code": 0,
@@ -583,8 +583,8 @@ class TestGlobalJobTracker:
                     "metadata": {}
                 },
                 {
-                    "job_name": "older_than_30_days",
-                    "start_time": (cutoff_time - dt.timedelta(seconds=1)).isoformat(),  # Just over 30 days
+                    "job_name": "older_than_90_days",
+                    "start_time": (cutoff_time - dt.timedelta(seconds=1)).isoformat(),  # Just over 90 days
                     "end_time": (cutoff_time - dt.timedelta(seconds=1) + dt.timedelta(minutes=1)).isoformat(),
                     "status": "success",
                     "exit_code": 0,
@@ -603,7 +603,7 @@ class TestGlobalJobTracker:
 
         tracker = JobTracker(storage_path=storage_path)
 
-        # Should keep the job within 30 days, remove older ones
+        # Should keep jobs within 90 days, remove older ones (Issue #7)
         assert len(tracker._current_jobs) == 1
         remaining_job = list(tracker._current_jobs.values())[0]
-        assert remaining_job.job_name == "within_30_days"
+        assert remaining_job.job_name == "within_90_days"
