@@ -50,30 +50,47 @@ class CronJobRunner:
         logger.setLevel(logging.INFO)
 
     def _extract_real_error_message(self, logs: List[str]) -> Optional[str]:
-        """Extract real error message from logs instead of generic 'Command failed'.
+        """Extract real error message from logs with priority-based search.
 
-        Searches for ERROR lines, exception messages, or meaningful failure messages
-        and returns the first one found. Falls back to None if no error found.
+        Priority:
+        1. Unhandled error (actual Python exception)
+        2. Last ERROR line in logs (most recent failure)
+        3. Exception type lines (RuntimeError, etc)
+        Returns None if no meaningful error found (fall back to generic message).
         """
         if not logs:
             return None
 
-        # Look for lines with ERROR level or exception information
-        for i, line in enumerate(logs):
-            line_lower = line.lower()
-
-            # Check for ERROR log lines
-            if " error " in line_lower or "error:" in line_lower:
-                # Try to extract the actual error message
+        # Priority 1: Look for "Unhandled error" - actual exception that caused failure
+        for line in logs:
+            if "Unhandled error:" in line or "unhandled error:" in line.lower():
+                # Extract message after colon
                 if ": " in line:
                     error_part = line.split(": ", 1)[1].strip()
-                    if error_part and not error_part.startswith("Job "):
+                    if error_part:
                         return error_part
                 return line.strip()
 
-            # Check for exception types (RuntimeError, ValueError, etc)
+        # Priority 2: Find LAST ERROR line (most recent/critical failure, not early recovery attempts)
+        last_error = None
+        for line in logs:
+            line_lower = line.lower()
+            if " error " in line_lower or "error:" in line_lower:
+                # Extract the actual message
+                if ": " in line:
+                    error_part = line.split(": ", 1)[1].strip()
+                    if error_part and not error_part.startswith("Job "):
+                        last_error = error_part
+                else:
+                    last_error = line.strip()
+
+        if last_error:
+            return last_error
+
+        # Priority 3: Look for exception types (RuntimeError, ValueError, etc)
+        for i, line in enumerate(logs):
             if any(exc_type in line for exc_type in
-                   ["Error", "Exception", "Traceback", "raise ", "failed"]):
+                   ["Error", "Exception", "Traceback", "raise "]):
                 if "Traceback" not in line and "raise" not in line:
                     continue
                 # Look ahead for the actual exception message
@@ -86,7 +103,7 @@ class CronJobRunner:
                                 return next_line.split(": ", 1)[1].strip()
                             return next_line
 
-        # If no ERROR line found, return None to indicate generic message should be used
+        # No meaningful error found, use generic message
         return None
 
     async def start(self) -> None:
