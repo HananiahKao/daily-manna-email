@@ -172,6 +172,34 @@ def get_missing_recipients(
     return [r for r in all_recipients if r not in delivered]
 
 
+def cleanup_old_deliveries(days: int = 7, path: Optional[Path] = None) -> int:
+    """Remove delivery records older than specified days (default 7).
+
+    Args:
+        days: Number of days to retain (default 7)
+        path: Optional path override for testing
+
+    Returns:
+        Number of dates removed
+    """
+    path = path or get_deliveries_path()
+    deliveries = load_deliveries(path)
+
+    cutoff_date = dt.date.today() - dt.timedelta(days=days)
+    cutoff_str = cutoff_date.isoformat()
+
+    dates_to_remove = [date_str for date_str in deliveries.keys() if date_str < cutoff_str]
+
+    for date_str in dates_to_remove:
+        del deliveries[date_str]
+        logger.info("Cleaned up delivery records for %s", date_str)
+
+    if dates_to_remove:
+        save_deliveries(deliveries, path)
+
+    return len(dates_to_remove)
+
+
 __all__ = [
     "check_delivery",
     "record_delivery",
@@ -180,4 +208,5 @@ __all__ = [
     "load_deliveries",
     "save_deliveries",
     "get_deliveries_path",
+    "cleanup_old_deliveries",
 ]
