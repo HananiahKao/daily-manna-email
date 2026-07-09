@@ -22,11 +22,13 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import secrets
 from pydantic import BaseModel, field_validator
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request as GoogleRequest
+from collections import defaultdict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # Ensure modules at the repo root (e.g. schedule_manager) remain importable when uvicorn sets --app-dir
@@ -188,8 +190,46 @@ def git_last_modified_date(file_path: str) -> str:
     return dt.datetime.now().strftime("%B %d, %Y")
 
 
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Rate limiting middleware for public endpoints to prevent abuse."""
+
+    def __init__(self, app, rate_limit_per_hour: int = 10):
+        super().__init__(app)
+        self.rate_limit_per_hour = rate_limit_per_hour
+        self.requests: defaultdict = defaultdict(list)  # {ip: [timestamp, ...]}
+
+    async def dispatch(self, request: Request, call_next):
+        # Only rate-limit /deliver/status endpoint (public, email enumeration risk)
+        if request.url.path != "/api/deliver/status":
+            return await call_next(request)
+
+        client_ip = request.client.host if request.client else "unknown"
+        now = dt.datetime.now()
+        one_hour_ago = now - dt.timedelta(hours=1)
+
+        # Clean old requests and count recent ones
+        self.requests[client_ip] = [ts for ts in self.requests[client_ip] if ts > one_hour_ago]
+        recent_count = len(self.requests[client_ip])
+
+        if recent_count >= self.rate_limit_per_hour:
+            logger.warning(
+                "Rate limit exceeded for IP %s (limit=%d/hour)",
+                client_ip, self.rate_limit_per_hour
+            )
+            return JSONResponse(
+                {"error": "Rate limit exceeded. Maximum 10 queries per hour."},
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
+        self.requests[client_ip].append(now)
+        return await call_next(request)
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Daily Manna Email")
+
+    # Add rate limiting for public endpoints (prevents email enumeration)
+    app.add_middleware(RateLimitMiddleware, rate_limit_per_hour=10)
 
     # Add session middleware
     app.add_middleware(SessionMiddleware, secret_key=secrets.token_hex(32))
