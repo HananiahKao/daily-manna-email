@@ -237,8 +237,15 @@ class TestCronJobRunner:
         mock_rule.commands = [command]
         mock_rule.env = {}
 
-        with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt:
+        with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt, \
+             patch.object(cron_runner.job_tracker, 'start_job') as mock_start:
             mock_attempt.return_value = None  # Success
+
+            # Create a mock job_result with proper initialization
+            mock_job_result = Mock()
+            mock_job_result.retry_count = 0
+            mock_job_result.max_retries = 2
+            mock_start.return_value = mock_job_result
 
             await cron_runner._execute_job_with_retries(mock_rule, max_retries=2)
 
@@ -257,9 +264,17 @@ class TestCronJobRunner:
         mock_rule.env = {}
 
         with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt, \
-             patch('app.cron_runner.asyncio.sleep', return_value=None):  # Patch asyncio.sleep to prevent hanging
+             patch('app.cron_runner.asyncio.sleep', return_value=None), \
+             patch.object(cron_runner.job_tracker, 'start_job') as mock_start, \
+             patch.object(cron_runner.job_tracker, 'update_job') as mock_update:  # Mock update_job for retry tracking
             # First call fails, second succeeds
             mock_attempt.side_effect = [Exception("Failed"), None]
+
+            # Create a mock job_result with proper initialization
+            mock_job_result = Mock()
+            mock_job_result.retry_count = 0
+            mock_job_result.max_retries = 1
+            mock_start.return_value = mock_job_result
 
             await cron_runner._execute_job_with_retries(mock_rule, max_retries=1)
 
@@ -278,8 +293,16 @@ class TestCronJobRunner:
         mock_rule.env = {}
 
         with patch.object(cron_runner, '_execute_job_single_attempt', new_callable=AsyncMock) as mock_attempt, \
-             patch('app.cron_runner.asyncio.sleep', return_value=None):  # Patch asyncio.sleep to prevent hanging
+             patch('app.cron_runner.asyncio.sleep', return_value=None), \
+             patch.object(cron_runner.job_tracker, 'start_job') as mock_start, \
+             patch.object(cron_runner.job_tracker, 'update_job') as mock_update:
             mock_attempt.side_effect = Exception("Always fails")
+
+            # Create a mock job_result with proper initialization
+            mock_job_result = Mock()
+            mock_job_result.retry_count = 0
+            mock_job_result.max_retries = 1
+            mock_start.return_value = mock_job_result
 
             with pytest.raises(Exception, match="Always fails"):
                 await cron_runner._execute_job_with_retries(mock_rule, max_retries=1)

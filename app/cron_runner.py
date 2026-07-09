@@ -233,7 +233,7 @@ class CronJobRunner:
         job_result = self.job_tracker.start_job(rule.name, max_retries)
 
         for attempt in range(max_retries + 1):  # +1 for initial attempt
-            attempt_info = f"Attempt {attempt + 1}/{max_retries + 1}" if attempt > 0 else None
+            attempt_info = f"Retry {job_result.retry_count}/{max_retries}" if job_result.retry_count > 0 else None
             try:
                 await self._execute_job_single_attempt(
                     command=command,
@@ -246,6 +246,10 @@ class CronJobRunner:
             except Exception as e:
                 if attempt < max_retries:
                     logger.info(f"Job {rule.name} failed ({attempt_info or 'initial'}), retrying in 60 seconds")
+                    # Increment retry count for dashboard visibility and clear error message
+                    job_result.retry_count += 1
+                    job_result.error_message = None
+                    self.job_tracker.update_job(job_result)
                     await asyncio.sleep(60)  # Wait 1 minute before retry
                 else:
                     logger.error(f"Job {rule.name} failed permanently after {max_retries + 1} attempts")

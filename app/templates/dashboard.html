@@ -700,8 +700,15 @@
       filtered = currentNotifications.filter(n => n.status === 'failed' && !acknowledgedNotifications.has(`${n.job_name}_${n.start_time}`));
     }
 
-    // Sort by most recent first
-    filtered.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+    // Sort: retrying jobs first, then by most recent
+    filtered.sort((a, b) => {
+      // Prioritize jobs currently retrying (running with retry_count > 0)
+      const aRetrying = a.status === 'running' && a.retry_count > 0;
+      const bRetrying = b.status === 'running' && b.retry_count > 0;
+      if (aRetrying !== bRetrying) return bRetrying - aRetrying;
+      // Then by most recent
+      return new Date(b.start_time) - new Date(a.start_time);
+    });
 
     // Clear all content except the pagination footer
     const existingItems = listDiv.querySelectorAll('.notification-item, .no-notifications-message');
@@ -712,9 +719,22 @@
     filtered.forEach(notification => {
       const id = `${notification.job_name}_${notification.start_time}`;
       const isAcknowledged = acknowledgedNotifications.has(id);
-      const status = getNotificationStatus(notification.status, isAcknowledged);
-      const outcome = getNotificationOutcome(notification.status);
+      const isRetrying = notification.status === 'running' && notification.retry_count > 0;
+      const status = getNotificationStatus(notification.status, isAcknowledged, isRetrying);
+      const outcome = getNotificationOutcome(notification.status, notification.retry_count, notification.max_retries);
       const timeStr = formatNotificationTime(notification.start_time);
+
+      // Debug: Log notification data
+      if (notification.retry_count > 0 || notification.status === 'running') {
+        console.log('Notification:', {
+          job: notification.job_name,
+          status: notification.status,
+          retry_count: notification.retry_count,
+          max_retries: notification.max_retries,
+          isRetrying,
+          outcome
+        });
+      }
 
       html += `
         <div class="notification-item ${status.className}" onclick="showJobDetails('${id}')">
@@ -743,7 +763,13 @@
     updateLoadMoreState();
   }
 
-  function getNotificationStatus(status, isAcknowledged) {
+  function getNotificationStatus(status, isAcknowledged, retrying = false) {
+    if (retrying) {
+      return {
+        className: 'retrying',
+        iconStyle: 'background: #f59e0b; border-radius: 50%;'  // Amber for retrying
+      };
+    }
     if (status === 'failed') {
       if (isAcknowledged) {
         return {
@@ -764,7 +790,10 @@
     }
   }
 
-  function getNotificationOutcome(status) {
+  function getNotificationOutcome(status, retryCount = 0, maxRetries = 0) {
+    if (status === 'running' && retryCount > 0) {
+      return `Retrying (Attempt ${retryCount}/${maxRetries})`;
+    }
     switch (status) {
       case 'success': return 'Success';
       case 'failed': return 'Failed';
@@ -881,8 +910,10 @@
       }) : null;
 
       // Get status and outcome
-      const outcome = getNotificationOutcome(execution.status);
-      const statusClass = execution.status === 'failed' ? 'status-error' :
+      const outcome = getNotificationOutcome(execution.status, execution.retry_count, execution.max_retries);
+      const isRetrying = execution.status === 'running' && execution.retry_count > 0;
+      const statusClass = isRetrying ? 'status-warning' :
+                         execution.status === 'failed' ? 'status-error' :
                          execution.status === 'success' ? 'status-success' : 'status-info';
 
       // Create job details modal

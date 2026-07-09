@@ -182,8 +182,8 @@ class TestCronRunnerJobTrackerIntegration:
             job = recent_executions[0]
             assert job.job_name == "retry_job"
             assert job.status == "success"
-            assert job.retry_count == 0  # Retry count not incremented during retry process
-            assert "Attempt 2/2" in "\n".join(job.logs)
+            assert job.retry_count == 1  # Incremented to show retry occurred (Phase 3.1)
+            assert "Retry 1/1" in "\n".join(job.logs)  # Coherent naming (Phase 3.1)
 
     @pytest.mark.asyncio
     async def test_timeout_job_execution_updates_tracker(self, cron_runner_with_tracker):
