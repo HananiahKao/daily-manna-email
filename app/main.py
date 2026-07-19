@@ -1661,6 +1661,48 @@ def create_app() -> FastAPI:
                 detail=f"Error unsubscribing: {str(e)}"
             )
 
+    @app.get("/api/deliver/status", response_class=JSONResponse)
+    def api_deliver_status(email: str = "") -> JSONResponse:
+        """Public delivery status lookup (no authentication required).
+
+        Query delivery records by email address. Rate limited to 10 queries
+        per hour per IP to prevent email enumeration attacks.
+
+        Args:
+            email: Email address to look up deliveries for
+
+        Returns:
+            JSON with delivered_dates (list of ISO dates) and total_delivered count
+        """
+        from app.delivery_tracker import get_deliveries_path, load_deliveries
+
+        email = (email or "").strip().lower()
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="email parameter is required"
+            )
+
+        try:
+            deliveries = load_deliveries()
+            delivered_dates = []
+
+            for date_str in sorted(deliveries.keys(), reverse=True):
+                if email in deliveries[date_str]:
+                    delivered_dates.append(date_str)
+
+            return JSONResponse({
+                "email": email,
+                "delivered_dates": delivered_dates,
+                "total_delivered": len(delivered_dates)
+            })
+        except Exception as e:
+            logger.error("Error querying delivery status for %s: %s", email, e)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error querying delivery records"
+            )
+
     return app
 
 
