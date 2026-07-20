@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Delivery Status - Daily Manna Email</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .container { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 40px; max-width: 500px; width: 100%; }
+        h1 { color: #222; margin-bottom: 10px; font-size: 24px; }
+        .subtitle { color: #666; margin-bottom: 30px; font-size: 14px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: #333; font-weight: 500; font-size: 14px; }
+        input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        input:focus { outline: none; border-color: #999; }
+        button { width: 100%; padding: 10px; background: #333; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 14px; }
+        button:hover { background: #222; }
+        button:disabled { background: #aaa; cursor: not-allowed; }
+        .message { padding: 12px; border-radius: 4px; margin-bottom: 20px; display: none; font-size: 14px; }
+        .message.success { background: #e6f4ea; color: #1b5e20; }
+        .message.error { background: #fce8e6; color: #b71c1c; }
+        .message.info { background: #e3f2fd; color: #0d47a1; }
+        .loading { display: none; text-align: center; color: #666; font-size: 14px; }
+        .loading.show { display: block; }
+        .results { display: none; margin-top: 30px; }
+        .results.show { display: block; }
+        .results-header { margin-bottom: 20px; border-bottom: 2px solid #f0f0f0; padding-bottom: 15px; }
+        .results-email { font-size: 13px; color: #666; }
+        .results-email strong { color: #333; }
+        .total-delivered { font-size: 18px; font-weight: 600; color: #1b5e20; margin-top: 8px; }
+        .delivered-list { margin-top: 20px; }
+        .delivered-item { padding: 12px; background: #f9f9f9; border-left: 3px solid #4caf50; margin-bottom: 10px; border-radius: 2px; }
+        .delivered-date { font-weight: 600; color: #333; }
+        .delivered-day { color: #888; font-size: 13px; margin-top: 4px; }
+        .no-deliveries { padding: 20px; background: #fffde7; border-left: 3px solid #fbc02d; border-radius: 2px; color: #f57f17; font-size: 14px; }
+        .footer { margin-top: 30px; text-align: center; border-top: 1px solid #eee; padding-top: 20px; font-size: 13px; }
+        .footer a { color: #0066cc; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Delivery Status</h1>
+        <p class="subtitle">Check when your emails were delivered</p>
+
+        <div id="message" class="message"></div>
+
+        <form id="statusForm">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" required placeholder="you@example.com" autocomplete="email">
+            </div>
+            <button type="submit" id="submitBtn">Check Status</button>
+        </form>
+
+        <div class="loading" id="loading">
+            <p>Checking delivery records...</p>
+        </div>
+
+        <div class="results" id="results">
+            <div class="results-header">
+                <div class="results-email">Email: <strong id="resultEmail"></strong></div>
+                <div class="total-delivered" id="totalDelivered"></div>
+            </div>
+            <div class="delivered-list" id="deliveredList"></div>
+        </div>
+
+        <div class="footer">
+            <a href="/">Back to Home</a> | <a href="/subscribe">Subscribe</a>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('statusForm');
+        const emailInput = document.getElementById('email');
+        const messageEl = document.getElementById('message');
+        const loadingEl = document.getElementById('loading');
+        const resultsEl = document.getElementById('results');
+        const submitBtn = document.getElementById('submitBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const email = emailInput.value.trim().toLowerCase();
+            messageEl.style.display = 'none';
+            loadingEl.classList.add('show');
+            resultsEl.classList.remove('show');
+            submitBtn.disabled = true;
+
+            try {
+                const response = await fetch(`/api/deliver/status?email=${encodeURIComponent(email)}`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayResults(data);
+                    messageEl.style.display = 'none';
+                } else {
+                    if (response.status === 429) {
+                        messageEl.textContent = 'Too many requests. Please try again later.';
+                    } else {
+                        messageEl.textContent = 'Error: ' + (data.detail || 'Failed to retrieve status');
+                    }
+                    messageEl.className = 'message error';
+                    messageEl.style.display = 'block';
+                    resultsEl.classList.remove('show');
+                }
+            } catch (error) {
+                messageEl.textContent = 'Error: ' + error.message;
+                messageEl.className = 'message error';
+                messageEl.style.display = 'block';
+                resultsEl.classList.remove('show');
+            } finally {
+                loadingEl.classList.remove('show');
+                submitBtn.disabled = false;
+            }
+        });
+
+        function displayResults(data) {
+            const { email, delivered_dates, total_delivered } = data;
+
+            document.getElementById('resultEmail').textContent = email;
+
+            const totalEl = document.getElementById('totalDelivered');
+            if (total_delivered === 0) {
+                totalEl.textContent = 'No deliveries in the last 7 days';
+            } else {
+                totalEl.textContent = `${total_delivered} email${total_delivered !== 1 ? 's' : ''} delivered`;
+            }
+
+            const listEl = document.getElementById('deliveredList');
+            listEl.innerHTML = '';
+
+            if (delivered_dates.length === 0) {
+                listEl.innerHTML = '<div class="no-deliveries">No delivery records found in the last 7 days.</div>';
+            } else {
+                delivered_dates.forEach(dateStr => {
+                    const date = new Date(dateStr + 'T00:00:00Z');
+                    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
+                    const formattedDate = date.toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
+                    });
+
+                    const item = document.createElement('div');
+                    item.className = 'delivered-item';
+                    item.innerHTML = `
+                        <div class="delivered-date">${formattedDate}</div>
+                        <div class="delivered-day">${dayName}</div>
+                    `;
+                    listEl.appendChild(item);
+                });
+            }
+
+            resultsEl.classList.add('show');
+        }
+    </script>
+</body>
+</html>

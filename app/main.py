@@ -1610,6 +1610,11 @@ def create_app() -> FastAPI:
             "display_names": display_names
         })
 
+    @app.get("/delivery-status", response_class=HTMLResponse)
+    def page_delivery_status(request: Request) -> HTMLResponse:
+        """Render the public delivery status lookup page."""
+        return templates.TemplateResponse("delivery_status.html", {"request": request})
+
     @app.post("/api/public/unsubscribe", response_class=JSONResponse)
     async def api_public_unsubscribe(request: Request) -> JSONResponse:
         """Public self-service unsubscribe endpoint (no authentication required)."""
@@ -1674,7 +1679,7 @@ def create_app() -> FastAPI:
         Returns:
             JSON with delivered_dates (list of ISO dates) and total_delivered count
         """
-        from app.delivery_tracker import get_deliveries_path, load_deliveries
+        import delivery_tracker
 
         email = (email or "").strip().lower()
         if not email:
@@ -1684,7 +1689,7 @@ def create_app() -> FastAPI:
             )
 
         try:
-            deliveries = load_deliveries()
+            deliveries = delivery_tracker.load_deliveries()
             delivered_dates = []
 
             for date_str in sorted(deliveries.keys(), reverse=True):
