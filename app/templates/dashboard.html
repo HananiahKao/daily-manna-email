@@ -397,11 +397,97 @@
 
   const NOTIFICATION_REFRESH_INTERVAL_MS = 30000;
   let notificationRefreshTimer = null;
+  let sseEventSource = null;
+
+  const connectSSE = () => {
+    if (sseEventSource) {
+      return; // Already connected
+    }
+
+    sseEventSource = new EventSource('/api/jobs/updates');
+
+    sseEventSource.onmessage = (event) => {
+      try {
+        const update = JSON.parse(event.data);
+        console.log('SSE job update:', update);
+
+        // Find and update the notification with matching job_name and start_time
+        const notifications = document.querySelectorAll('.notification-item');
+        let found = false;
+
+        notifications.forEach(notif => {
+          const jobName = notif.querySelector('[data-job-name]')?.getAttribute('data-job-name');
+          const startTime = notif.querySelector('[data-start-time]')?.getAttribute('data-start-time');
+
+          if (jobName === update.job_name && startTime === update.start_time) {
+            // Update status class
+            notif.className = `notification-item ${update.status}`;
+            if (update.status === 'failed') {
+              notif.classList.add('failed');
+            } else if (update.status === 'success') {
+              notif.classList.add('success');
+            } else if (update.status === 'running') {
+              notif.classList.add('running');
+            }
+
+            // Update status display
+            const statusEl = notif.querySelector('.notification-status');
+            if (statusEl) {
+              if (update.status === 'running' && update.retry_count > 0) {
+                statusEl.innerHTML = `<span class="status-warning">🔄 Retrying (${update.retry_count}/${update.max_retries})</span>`;
+              } else {
+                const outcome = getNotificationOutcome(update.status, update.error_message, update.retry_count, update.max_retries);
+                statusEl.textContent = outcome;
+              }
+            }
+
+            // Update error message if present
+            if (update.error_message) {
+              const errorEl = notif.querySelector('.notification-error');
+              if (errorEl) {
+                errorEl.textContent = update.error_message;
+              }
+            }
+
+            found = true;
+          }
+        });
+
+        // If not found in current list, reload to get all latest updates
+        if (!found && (update.status === 'success' || update.status === 'failed')) {
+          console.log('Job not found in current notifications, reloading list');
+          loadNotifications();
+        }
+      } catch (error) {
+        console.error('Error parsing SSE message:', error);
+      }
+    };
+
+    sseEventSource.onerror = (event) => {
+      console.error('SSE connection error:', event);
+      closeSSE();
+      // Reconnect after 5 seconds
+      setTimeout(connectSSE, 5000);
+    };
+
+    console.log('SSE connection established');
+  };
+
+  const closeSSE = () => {
+    if (sseEventSource) {
+      sseEventSource.close();
+      sseEventSource = null;
+      console.log('SSE connection closed');
+    }
+  };
 
   const startNotificationPolling = () => {
     if (notificationRefreshTimer) {
       clearInterval(notificationRefreshTimer);
     }
+    // Connect to SSE for real-time updates
+    connectSSE();
+    // Keep polling as fallback (every 30s)
     notificationRefreshTimer = setInterval(() => {
       const overlay = document.getElementById('notification-overlay');
       if (!overlay.hidden) {
@@ -415,6 +501,7 @@
       clearInterval(notificationRefreshTimer);
       notificationRefreshTimer = null;
     }
+    closeSSE();
   };
 
   // Check OAuth status when page loads

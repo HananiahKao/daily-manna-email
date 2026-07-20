@@ -44,6 +44,7 @@ from app.security import require_user, authenticate_user, login_required, requir
 from app.oauth_scopes import get_scopes_descriptions
 from app.cron_runner import get_cron_runner, shutdown_cron_runner
 from app.caffeine_mode import start_caffeine_mode
+from app.sse_manager import sse_manager
 
 
 logger = logging.getLogger(__name__)
@@ -1326,6 +1327,45 @@ def create_app() -> FastAPI:
 
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid execution ID: {str(e)}")
+
+    @app.get("/api/jobs/updates")
+    async def api_job_updates(
+        _: str = Depends(require_user),
+    ):
+        """Server-Sent Events endpoint for real-time job status updates.
+
+        Streams job status changes to connected clients. When job status
+        changes (running → success/failed), update is sent immediately
+        to all connected clients for instant UI synchronization.
+
+        Prevents state mismatch between notification list and job modal.
+        """
+        async def event_generator():
+            # Create queue for this client
+            queue = asyncio.Queue(maxsize=100)
+            await sse_manager.add_client(queue)
+
+            try:
+                # Keep connection alive, stream updates as they arrive
+                while True:
+                    try:
+                        message = await asyncio.wait_for(queue.get(), timeout=55)
+                        yield f"data: {message}\n\n"
+                    except asyncio.TimeoutError:
+                        # Send keepalive comment every 55 seconds
+                        yield ": keepalive\n\n"
+            finally:
+                await sse_manager.remove_client(queue)
+
+        return Response(
+            content=event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable Nginx buffering
+            }
+        )
 
     @app.get("/api/state-backup")
     def api_state_backup(

@@ -18,6 +18,7 @@ import schedule_manager as sm
 import job_dispatcher
 
 from app.job_tracker import get_job_tracker, JobExecutionResult
+from app.sse_manager import sse_manager, JobUpdate
 
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,22 @@ class CronJobRunner:
         )
         logger.addHandler(file_handler)
         logger.setLevel(logging.INFO)
+
+    async def _broadcast_job_update(self, job_result: JobExecutionResult) -> None:
+        """Broadcast job status update to SSE clients for real-time sync."""
+        try:
+            update = JobUpdate(
+                job_name=job_result.job_name,
+                status=job_result.status,
+                start_time=job_result.start_time.isoformat() if job_result.start_time else "",
+                end_time=job_result.end_time.isoformat() if job_result.end_time else None,
+                error_message=job_result.error_message,
+                retry_count=job_result.retry_count,
+                max_retries=3,  # Job max retries is hardcoded to 3
+            )
+            await sse_manager.broadcast_update(update)
+        except Exception as e:
+            logger.error(f"Failed to broadcast SSE update: {e}")
 
     def _extract_real_error_message(self, logs: List[str]) -> Optional[str]:
         """Extract real error message from logs with priority-based search.
@@ -242,6 +259,8 @@ class CronJobRunner:
                     job_result=job_result,
                     rule=rule
                 )
+                # Success - broadcast update before exiting
+                await self._broadcast_job_update(job_result)
                 return  # Success - exit retry loop
             except Exception as e:
                 if attempt < max_retries:
@@ -250,11 +269,15 @@ class CronJobRunner:
                     job_result.retry_count += 1
                     job_result.error_message = None
                     self.job_tracker.update_job(job_result)
+                    # Broadcast retry state to SSE clients
+                    await self._broadcast_job_update(job_result)
                     await asyncio.sleep(60)  # Wait 1 minute before retry
                 else:
                     logger.error(f"Job {rule.name} failed permanently after {max_retries + 1} attempts")
                     # Set final status to failed when all retries are exhausted
                     self.job_tracker.update_job(job_result, status="failed")
+                    # Broadcast failure to SSE clients
+                    await self._broadcast_job_update(job_result)
                     raise  # Re-raise the last exception
 
     async def _execute_job_single_attempt(
