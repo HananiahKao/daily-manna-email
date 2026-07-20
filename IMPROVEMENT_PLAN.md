@@ -34,13 +34,14 @@
 **Phase 2 Progress:** 4/4 core + 5/5 polish complete (100%) ✅ COMPLETE
 
 ### Phase 3: Dashboard & Observability (August) — P=2, S=2
-- [ ] **3.0** Extract error messages from job logs
-- [ ] **3.1** Enhance job history dashboard
-- [ ] **3.2** Email delivery status page (user-facing)
+- [x] **3.0** Extract error messages from job logs ✅ DONE (Phase 3.0)
+- [x] **3.1** Enhance job history dashboard ✅ DONE (Phase 3.1)
+- [x] **3.2** Email delivery status page (user-facing) ✅ DONE (Phase 3.2)
 - [ ] **3.3** Real-time dashboard updates with AJAX
 - [ ] **3.4** Dashboard UX improvements
+- [x] **3.2.1** Add missing unsubscribe page ✅ DONE (Bugfix)
 
-**Phase 3 Progress:** 0/5 tasks complete (0%)
+**Phase 3 Progress:** 4/6 tasks complete (67%)
 
 ### Phase 4: Email Formatting & Polish (September) — P=2–3, S=2–3
 - [ ] **4.0** Full mobile support for dashboard
@@ -59,7 +60,7 @@
 
 ---
 
-**Overall Progress:** 15/25 tasks complete (60%) | Phase 2 ✅ COMPLETE | ⏳ Phase 3 Next (0/5 started)
+**Overall Progress:** 22/28 tasks complete (79%) | Phase 2 ✅ COMPLETE | Phase 3 (67%) | Pre-Phase-4 Privacy ⏳
 
 ---
 
@@ -589,6 +590,68 @@ Tasks are distributed across 4 months before senior high school starts, with foc
 - Form validation feedback
 
 **Effort:** ~8 hours (can defer to Phase 4 if constrained)
+
+---
+
+## Pre-Phase 4: Privacy & Security (Required Before Production)
+
+### Task PRE-4.1: Email Verification for Information Disclosure Endpoints
+**Status:** FLAGGED (not yet started)  
+**P/S:** P=1, S=1 (CRITICAL privacy/security requirement)  
+**Required Before:** Phase 4 (production launch)
+
+**Privacy Issue Identified:**
+Both `/subscribe` and `/delivery-status` pages allow anyone to enter an email and potentially learn:
+- **On /subscribe:** Whether an email is already subscribed (email enumeration attack)
+- **On /delivery-status:** Full delivery history for any email (information disclosure + enumeration)
+
+Combined with email enumeration, an attacker can:
+1. Gather list of valid emails
+2. Query delivery records for each
+3. Infer subscriber patterns and behavior
+
+**Solution: Email Verification Flow**
+Before revealing any information (subscription status or delivery records), require email verification:
+1. User enters email on `/subscribe` or `/delivery-status`
+2. System sends verification code/link to email address
+3. User clicks link or enters code to verify ownership
+4. Only after verification does user see:
+   - Subscription confirmation (on /subscribe)
+   - Delivery history (on /delivery-status)
+
+**Implementation:**
+- Create verification token system (random code + expiration, e.g., 15 min)
+- Store tokens in database (or encrypted file with TTL)
+- Add `/verify?token=XXX` endpoint to confirm ownership
+- Modify `/subscribe` and `/delivery-status` to require verification step
+- Only POST after verification confirmed
+- Rate limit verification requests (5/hour per email)
+
+**Database Changes:**
+- Add `verification_tokens` table (or similar):
+  - `token` (unique, indexed)
+  - `email` (lower-cased)
+  - `action` (subscribe | delivery-status)
+  - `created_at`
+  - `expires_at`
+  - `verified_at` (nullable, set on verification)
+
+**Affected Endpoints:**
+- `GET /subscribe` → Add verification step
+- `POST /api/public/subscribe` → Only accept verified emails
+- `GET /delivery-status` → Add verification step  
+- `GET /api/deliver/status` → Only accept verified emails
+- `GET /unsubscribe` → Consider verification here too (lower priority)
+- (NEW) `POST /api/verify-email` → Verify token and set session/cookie
+- (NEW) `GET /verify?token=XXX` → Confirmation page/redirect
+
+**Benefits:**
+- Eliminates email enumeration attack surface
+- Proves email ownership before revealing data
+- Complies with privacy-by-design principles
+- Production-safe (no information leakage)
+
+**Effort:** ~6-8 hours (token system, email sending, form flow)
 
 ---
 
