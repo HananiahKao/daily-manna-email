@@ -492,7 +492,17 @@
           el: section,
         });
       }
-      this.registerMonthEntries(key, data.entries);
+
+      // Track all dates in month (including empty) for month metadata
+      const allDates = [];
+      let current = new Date(data.calendar_start + 'T00:00:00Z');
+      const end = new Date(data.calendar_end + 'T00:00:00Z');
+      while (current <= end) {
+        allDates.push(current.toISOString().split('T')[0]);
+        current.setUTCDate(current.getUTCDate() + 1);
+      }
+      this.registerMonthEntries(key, data.entries, allDates);
+
       this.updateSelectionClasses();
       this.updateActiveMonthLabel();
       return section;
@@ -523,20 +533,52 @@
       grid.className = "calendar-grid";
       grid.setAttribute("role", "grid");
       grid.setAttribute("aria-label", label.textContent);
+
+      // Perf: Handle sparse entries (only non-empty dates sent from backend)
+      // Build map for O(1) lookup instead of iterating sparse array
+      const entryMap = new Map();
       data.entries.forEach((entry) => {
-        grid.appendChild(this.buildDayCell(entry));
+        entryMap.set(entry.date, entry);
       });
+
+      // Reconstruct full calendar grid from date range
+      let currentDate = new Date(data.calendar_start + 'T00:00:00Z');
+      const endDate = new Date(data.calendar_end + 'T00:00:00Z');
+      while (currentDate <= endDate) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        const entry = entryMap.get(dateStr);
+        if (entry) {
+          grid.appendChild(this.buildDayCell(entry));
+        } else {
+          // Create empty cell for missing dates
+          const emptyEntry = {
+            date: dateStr,
+            weekday: currentDate.toLocaleDateString('en-US', { weekday: 'long' }),
+            weekday_short: currentDate.toLocaleDateString('en-US', { weekday: 'short' }),
+            weekday_index: currentDate.getUTCDay(),
+            is_missing: true,
+            selector: null,
+            status: null,
+            sent_at: null,
+            notes: "",
+            override: null,
+            is_current_month: new Date(dateStr).getMonth() === data.month - 1
+          };
+          grid.appendChild(this.buildDayCell(emptyEntry));
+        }
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+      }
       section.appendChild(grid);
       return section;
     }
 
-    registerMonthEntries(key, entries) {
-      const dates = [];
+    registerMonthEntries(key, entries, allDates) {
+      // Index only entries with data for quick lookup
       entries.forEach((entry) => {
         this.entriesIndex.set(entry.date, entry);
-        dates.push(entry.date);
       });
-      this.monthEntries.set(key, dates);
+      // Track all dates in month (including empty dates) for month metadata
+      this.monthEntries.set(key, allDates);
     }
 
     dropMonthEntries(key) {
