@@ -1615,6 +1615,17 @@ def create_app() -> FastAPI:
         """Render the public delivery status lookup page."""
         return templates.TemplateResponse("delivery_status.html", {"request": request})
 
+    @app.get("/unsubscribe", response_class=HTMLResponse)
+    def page_unsubscribe(request: Request) -> HTMLResponse:
+        """Render the public unsubscribe page."""
+        sources = content_source_factory.get_available_sources()
+        display_names = content_source_factory.get_source_display_names()
+        return templates.TemplateResponse("unsubscribe.html", {
+            "request": request,
+            "sources": sources,
+            "display_names": display_names
+        })
+
     @app.post("/api/public/unsubscribe", response_class=JSONResponse)
     async def api_public_unsubscribe(request: Request) -> JSONResponse:
         """Public self-service unsubscribe endpoint (no authentication required)."""
