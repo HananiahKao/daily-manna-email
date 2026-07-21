@@ -65,6 +65,7 @@
       this.loadingNext = false;
       this.loadingPrev = false;
       this.scrollTicking = false;
+      this.pendingScrollAdjustment = null;
       this.maxVisibleMonths = 6;
       this.fullFormatter = new Intl.DateTimeFormat(undefined, {
         weekday: "long",
@@ -468,7 +469,19 @@
         const previousScrollHeight = this.scrollEl.scrollHeight;
         this.scrollEl.prepend(section);
         const delta = this.scrollEl.scrollHeight - previousScrollHeight;
-        this.scrollEl.scrollTop += delta;
+        // Batch scroll adjustment to prevent conflicts with active user scrolling
+        if (!this.pendingScrollAdjustment) {
+          this.pendingScrollAdjustment = delta;
+          requestAnimationFrame(() => {
+            if (this.pendingScrollAdjustment !== null) {
+              this.scrollEl.scrollTop += this.pendingScrollAdjustment;
+              this.pendingScrollAdjustment = null;
+            }
+          });
+        } else {
+          // Accumulate adjustments if multiple months load rapidly
+          this.pendingScrollAdjustment += delta;
+        }
         this.visibleMonths.unshift({
           key,
           year: data.year,
@@ -493,15 +506,8 @@
         });
       }
 
-      // Track all dates in month (including empty) for month metadata
-      const allDates = [];
-      let current = new Date(data.calendar_start + 'T00:00:00Z');
-      const end = new Date(data.calendar_end + 'T00:00:00Z');
-      while (current <= end) {
-        allDates.push(current.toISOString().split('T')[0]);
-        current.setUTCDate(current.getUTCDate() + 1);
-      }
-      this.registerMonthEntries(key, data.entries, allDates);
+      // Register month entries for state tracking
+      this.registerMonthEntries(key, data.entries);
 
       this.updateSelectionClasses();
       this.updateActiveMonthLabel();
@@ -541,43 +547,21 @@
         entryMap.set(entry.date, entry);
       });
 
-      // Reconstruct full calendar grid from date range
-      let currentDate = new Date(data.calendar_start + 'T00:00:00Z');
-      const endDate = new Date(data.calendar_end + 'T00:00:00Z');
-      while (currentDate <= endDate) {
-        const dateStr = currentDate.toISOString().split('T')[0];
-        const entry = entryMap.get(dateStr);
-        if (entry) {
-          grid.appendChild(this.buildDayCell(entry));
-        } else {
-          // Create empty cell for missing dates
-          const emptyEntry = {
-            date: dateStr,
-            weekday: currentDate.toLocaleDateString('en-US', { weekday: 'long' }),
-            weekday_short: currentDate.toLocaleDateString('en-US', { weekday: 'short' }),
-            weekday_index: currentDate.getUTCDay(),
-            is_missing: true,
-            selector: null,
-            status: null,
-            sent_at: null,
-            notes: "",
-            override: null,
-            is_current_month: new Date(dateStr).getMonth() === data.month - 1
-          };
-          grid.appendChild(this.buildDayCell(emptyEntry));
-        }
-        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
-      }
+      // Build grid cells from all entries (including empty dates)
+      data.entries.forEach((entry) => {
+        grid.appendChild(this.buildDayCell(entry));
+      });
       section.appendChild(grid);
       return section;
     }
 
-    registerMonthEntries(key, entries, allDates) {
-      // Index only entries with data for quick lookup
+    registerMonthEntries(key, entries) {
+      // Index entries for quick lookup
       entries.forEach((entry) => {
         this.entriesIndex.set(entry.date, entry);
       });
-      // Track all dates in month (including empty dates) for month metadata
+      // Track all dates in month for month metadata
+      const allDates = entries.map(entry => entry.date);
       this.monthEntries.set(key, allDates);
     }
 

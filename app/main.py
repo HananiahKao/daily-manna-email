@@ -675,12 +675,10 @@ def create_app() -> FastAPI:
         current_date = calendar_start
         while current_date <= calendar_end:
             entry = schedule.get_entry(current_date)
-            # Only include entries that have data (perf: reduce payload ~40%)
-            if entry:
-                serialized = _serialize_entry(entry, current_date)
-                # Add flag to indicate if this day belongs to the current month
-                serialized["is_current_month"] = current_date.month == month
-                entries.append(serialized)
+            serialized = _serialize_entry(entry, current_date)
+            # Add flag to indicate if this day belongs to the current month
+            serialized["is_current_month"] = current_date.month == month
+            entries.append(serialized)
             current_date += dt.timedelta(days=1)
 
         payload = {
