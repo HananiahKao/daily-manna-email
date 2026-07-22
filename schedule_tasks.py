@@ -138,22 +138,16 @@ def _send_summary_email(subject: str, text_body: str, html_body: str) -> None:
     if not admin_to:
         raise RuntimeError("ADMIN_SUMMARY_TO is not set; cannot send summary email")
 
-    original_email_to = os.environ.get("EMAIL_TO")
+    admin_from = os.getenv("ADMIN_SUMMARY_FROM")
     original_email_from = os.environ.get("EMAIL_FROM")
 
-    admin_from = os.getenv("ADMIN_SUMMARY_FROM")
+    admin_recipients = [addr.strip() for addr in admin_to.split(",") if addr.strip()]
 
     try:
-        os.environ["EMAIL_TO"] = admin_to
         if admin_from:
             os.environ["EMAIL_FROM"] = admin_from
-        sjzl.send_email(subject, text_body, html_body=html_body)  # Recipients logged by send_email
+        sjzl.send_email(subject, text_body, recipients=admin_recipients, html_body=html_body)
     finally:
-        if original_email_to is None:
-            os.environ.pop("EMAIL_TO", None)
-        else:
-            os.environ["EMAIL_TO"] = original_email_to
-
         if admin_from:
             if original_email_from is None:
                 os.environ.pop("EMAIL_FROM", None)
@@ -282,10 +276,9 @@ def _handle_ensure_week(args: argparse.Namespace) -> int:
         try:
             _send_summary_email(subject, text_body, html_body)
             emailed = True
-        except RuntimeError as exc:
-            print(f"WARNING: {exc}", file=sys.stderr)
         except Exception as exc:
             print(f"ERROR: failed to send summary email: {exc}", file=sys.stderr)
+            return 1
 
     payload = {
         "start": start.isoformat(),

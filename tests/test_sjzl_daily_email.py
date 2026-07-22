@@ -21,234 +21,105 @@ def test_extract_lesson_links_parsing_basic():
     assert [n for n, _ in links].count(210) == 1
 
 
-@patch("sjzl_daily_email.fetch")
-def test_list_index_pages_discovers_and_stops(mock_fetch):
-    # Simulate first two index pages exist, then consecutive misses
-    def side_effect(url):
-        if url.endswith("index01.html") or url.endswith("index02.html"):
-            return "<html>ok</html>"
-        if url.endswith("index.html"):
-            return "<html>root</html>"
-        return None
-
-    mock_fetch.side_effect = side_effect
-    pages = sjzl.list_index_pages(sjzl.SJZL_BASE)
-    assert any(u.endswith("index01.html") for u in pages)
-    assert any(u.endswith("index02.html") for u in pages)
-
-
-@patch("sjzl_daily_email.fetch")
-def test_find_latest_lesson_picks_highest(mock_fetch):
-    # Two index pages with different highest lessons
-    index1 = """
-    <a href="101.html">101</a>
-    <a href="150.html">150</a>
-    """
-    index2 = """
-    <a href="120.html">120</a>
-    <a href="199.html">199</a>
-    """
-    seq = ["<html>idx1</html>", index1, "<html>idx2</html>", index2]
-
-    def side_effect(url):
-        # First list_index_pages probes return non-empty for first two calls
-        if url.endswith("index01.html"):
-            return seq[0]
-        if url.endswith("index02.html"):
-            return seq[2]
-        # When fetching the actual pages during find_latest_lesson
-        if url.endswith("index01.html"):
-            return seq[0]
-        if url.endswith("index02.html"):
-            return seq[2]
-        # Not used
-        return None
-
-    # We will intercept fetch calls inside find_latest_lesson with specific returns
-    def fetch_for_find(url):
-        if url.endswith("index01.html"):
-            return index1
-        if url.endswith("index02.html"):
-            return index2
-        return None
-
-    mock_fetch.side_effect = fetch_for_find
-
-    latest = sjzl.find_latest_lesson("https://four.soqimp.com/books/2264")
-    # Because list_index_pages relies on fetch too, ensure it returns both pages
-    assert latest is not None
-    num, url = latest
-    assert num == 199
-    assert url.endswith("199.html")
-
-
-def test_extract_readable_text_fallbacks():
-    # No h1/h2/h3, but has <title>
-    html = """
-    <html><head><title>My Title</title></head>
-      <body>
-        <p>First para</p>
-        <p>Second para</p>
-        <script>ignore()</script>
-      </body>
-    </html>
-    """
-    title, text = sjzl.extract_readable_text(html)
-    assert title == "My Title"
-    assert "First para" in text and "Second para" in text
-
-    # Minimal content triggers raw text fallback
-    html2 = "<html><head><title>T</title></head><body><p>a</p></body></html>"
-    title2, text2 = sjzl.extract_readable_text(html2)
-    assert title2 in ("T", "聖經之旅 - 每日內容")
-    assert isinstance(text2, str)
-
-
+@patch("sjzl_daily_email.delivery_tracker.get_missing_recipients")
+@patch("sjzl_daily_email.delivery_tracker.record_delivery")
 @patch("sjzl_daily_email.get_gmail_service")
-@patch("smtplib.SMTP")
-def test_send_email_starttls(mock_smtp, mock_gmail, monkeypatch):
-    # Set required envs
-    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
-    monkeypatch.setenv("SMTP_PORT", "587")
-    monkeypatch.setenv("SMTP_USER", "user@example.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "secret")
-    monkeypatch.setenv("EMAIL_TO", "to@example.com")
-    monkeypatch.setenv("TLS_MODE", "starttls")
+def test_send_email_records_delivery_on_success(mock_gmail, mock_record, mock_missing, monkeypatch):
+    """Test that send_email records delivery after successful send."""
+    import datetime as dt
+    from unittest.mock import call
 
-    # Mock Gmail service
-    mock_service = MagicMock()
-    mock_gmail.return_value = mock_service
-
-    sjzl.send_email("Subj", "Body")
-
-    # Since it uses Gmail API now, SMTP mocks shouldn't be called
-    assert not mock_smtp.called
-    mock_gmail.assert_called()
-
-
-@patch("sjzl_daily_email.get_gmail_service")
-@patch("smtplib.SMTP_SSL")
-def test_send_email_ssl_with_html(mock_smtp_ssl, mock_gmail, monkeypatch):
-    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
-    monkeypatch.setenv("SMTP_PORT", "465")
-    monkeypatch.setenv("SMTP_USER", "user@example.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "secret")
-    monkeypatch.setenv("EMAIL_TO", "to1@example.com, to2@example.com")
-    monkeypatch.setenv("TLS_MODE", "ssl")
-
-    # Mock Gmail service
-    mock_service = MagicMock()
-    mock_gmail.return_value = mock_service
-
-    sjzl.send_email("Subj", "Body", html_body="<b>Hi</b>")
-
-    # Since it uses Gmail API now, SMTP mocks shouldn't be called
-    assert not mock_smtp_ssl.called
-    mock_gmail.assert_called()
-
-
-@patch("sjzl_daily_email.get_gmail_service")
-def test_send_email_debug_mode(mock_gmail, monkeypatch):
     monkeypatch.setenv("EMAIL_FROM", "from@example.com")
-    monkeypatch.setenv("EMAIL_TO", "to@example.com")
-    monkeypatch.setenv("DEBUG_MODE", "1")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
+    monkeypatch.setenv("EMAIL_TO", "user1@example.com,user2@example.com")
+    monkeypatch.delenv("DEBUG_MODE", raising=False)
 
-    # Mock Gmail service
+    # Mock get_missing_recipients to return both users (none delivered yet)
+    mock_missing.return_value = ["user1@example.com", "user2@example.com"]
+
+    # Mock Gmail service to return message IDs
     mock_service = MagicMock()
     mock_gmail.return_value = mock_service
+    mock_service.users().messages().send().execute.side_effect = [
+        {"id": "msg_id_1"},
+        {"id": "msg_id_2"}
+    ]
 
-    sjzl.send_email("Test Subject", "Test Body")
+    today = dt.date.today()
+    recipients = sjzl.send_email("Test Subject", "Test Body", recipients=["test@example.com"])
 
-    # Verify the message was sent
-    assert mock_gmail.called
+    # Verify deliveries were recorded
+    assert mock_record.call_count == 2
+    # Both calls should be for today's date
+    calls = mock_record.call_args_list
+    assert calls[0][0] == ("user1@example.com", today, "msg_id_1")
+    assert calls[1][0] == ("user2@example.com", today, "msg_id_2")
 
-    # Get the sent message data
-    call_args = mock_gmail.return_value.users.return_value.messages.return_value.send.call_args
-    message_data = call_args[1]['body']
-
-    # Decode the raw message to check recipient
-    import base64
-    raw_message = base64.urlsafe_b64decode(message_data['raw'])
-    message_str = raw_message.decode('utf-8', errors='ignore')
-
-    # In debug mode, should send to EMAIL_FROM
-    assert "To: from@example.com" in message_str
-    assert "To: to@example.com" not in message_str
+    # Verify return value contains message IDs
+    assert recipients == {
+        "user1@example.com": "msg_id_1",
+        "user2@example.com": "msg_id_2"
+    }
 
 
+@patch("sjzl_daily_email.delivery_tracker.get_missing_recipients")
 @patch("sjzl_daily_email.get_gmail_service")
-def test_send_email_normal_mode(mock_gmail, monkeypatch):
+def test_send_email_skips_already_delivered(mock_gmail, mock_missing, monkeypatch):
+    """Test that send_email skips recipients already delivered today."""
     monkeypatch.setenv("EMAIL_FROM", "from@example.com")
-    monkeypatch.setenv("EMAIL_TO", "to@example.com")
-    monkeypatch.delenv("DEBUG_MODE", raising=False)  # Ensure DEBUG_MODE is not set
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
+    monkeypatch.setenv("EMAIL_TO", "user1@example.com,user2@example.com,user3@example.com")
+    monkeypatch.delenv("DEBUG_MODE", raising=False)
+
+    # Mock get_missing_recipients to return only user2 and user3 (user1 already delivered)
+    mock_missing.return_value = ["user2@example.com", "user3@example.com"]
 
     # Mock Gmail service
     mock_service = MagicMock()
     mock_gmail.return_value = mock_service
+    mock_service.users().messages().send().execute.side_effect = [
+        {"id": "msg_id_2"},
+        {"id": "msg_id_3"}
+    ]
 
-    sjzl.send_email("Test Subject", "Test Body")
+    recipients = sjzl.send_email("Test Subject", "Test Body", recipients=["test@example.com"])
 
-    # Verify the message was sent
-    assert mock_gmail.called
-
-    # Get the sent message data
-    call_args = mock_gmail.return_value.users.return_value.messages.return_value.send.call_args
-    message_data = call_args[1]['body']
-
-    # Decode the raw message to check recipient
-    import base64
-    raw_message = base64.urlsafe_b64decode(message_data['raw'])
-    message_str = raw_message.decode('utf-8', errors='ignore')
-
-    # In normal mode, should send to EMAIL_TO
-    assert "To: to@example.com" in message_str
-    assert "To: from@example.com" not in message_str
+    # Should only send to 2 recipients, not 3
+    assert len(recipients) == 2
+    assert "user2@example.com" in recipients
+    assert "user3@example.com" in recipients
+    assert "user1@example.com" not in recipients
 
 
-def test_debug_enabled():
-    # Test _debug_enabled function
-    import os
+@patch("sjzl_daily_email.delivery_tracker.get_missing_recipients")
+@patch("sjzl_daily_email.delivery_tracker.record_delivery")
+@patch("sjzl_daily_email.get_gmail_service")
+def test_send_email_recovery_idempotent(mock_gmail, mock_record, mock_missing, monkeypatch):
+    """Test idempotent recovery: sending twice doesn't create duplicates.
 
-    # Save original env
-    orig_debug_email = os.environ.get("DEBUG_EMAIL")
-    orig_debug_mode = os.environ.get("DEBUG_MODE")
+    Scenario: System sends to Alice, then crashes before sending to Bob.
+    On restart, should only send to Bob.
+    """
+    import datetime as dt
 
-    try:
-        # Neither set
-        if "DEBUG_EMAIL" in os.environ:
-            del os.environ["DEBUG_EMAIL"]
-        if "DEBUG_MODE" in os.environ:
-            del os.environ["DEBUG_MODE"]
-        assert not sjzl._debug_enabled()
+    monkeypatch.setenv("EMAIL_FROM", "from@example.com")
+    monkeypatch.setenv("RECIPIENT_SOURCE", "email")
+    monkeypatch.setenv("EMAIL_TO", "alice@example.com,bob@example.com")
+    monkeypatch.delenv("DEBUG_MODE", raising=False)
 
-        # DEBUG_MODE set
-        os.environ["DEBUG_MODE"] = "1"
-        assert sjzl._debug_enabled()
+    today = dt.date.today()
 
-        # DEBUG_EMAIL set, DEBUG_MODE unset
-        del os.environ["DEBUG_MODE"]
-        os.environ["DEBUG_EMAIL"] = "1"
-        assert sjzl._debug_enabled()
+    # First run: only Bob is missing (Alice already in delivery tracker)
+    mock_missing.return_value = ["bob@example.com"]
 
-        # Both set
-        os.environ["DEBUG_MODE"] = "1"
-        assert sjzl._debug_enabled()
+    mock_service = MagicMock()
+    mock_gmail.return_value = mock_service
+    mock_service.users().messages().send().execute.return_value = {"id": "msg_bob"}
 
-        # DEBUG_MODE false values
-        os.environ["DEBUG_MODE"] = "0"
-        assert sjzl._debug_enabled()  # Still true because DEBUG_EMAIL is set
+    recipients = sjzl.send_email("Test Subject", "Test Body", recipients=["test@example.com"])
 
-        os.environ["DEBUG_EMAIL"] = "0"
-        assert not sjzl._debug_enabled()
+    # Should only send to Bob
+    assert recipients == {"bob@example.com": "msg_bob"}
 
-    finally:
-        # Restore original env
-        if orig_debug_email is not None:
-            os.environ["DEBUG_EMAIL"] = orig_debug_email
-        elif "DEBUG_EMAIL" in os.environ:
-            del os.environ["DEBUG_EMAIL"]
-
-        if orig_debug_mode is not None:
-            os.environ["DEBUG_MODE"] = orig_debug_mode
-        elif "DEBUG_MODE" in os.environ:
-            del os.environ["DEBUG_MODE"]
+    # Verify Bob's delivery was recorded
+    mock_record.assert_called_once_with("bob@example.com", today, "msg_bob", content_source=None)

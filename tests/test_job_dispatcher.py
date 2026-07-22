@@ -13,30 +13,25 @@ def _rule(name: str, weekday: int, hour: int, minute: int = 0):
     )
 
 
-def test_dispatch_runs_due(monkeypatch):
+def test_get_jobs_to_run_finds_due_jobs():
     now = dt.datetime(2025, 1, 1, 6, 0, tzinfo=sm.TAIWAN_TZ)  # Wednesday
     rules = [_rule("daily", now.weekday(), 6)]
-    calls = []
-
-    def fake_runner(cmd, dry_run):
-        calls.append(list(cmd))
 
     state = {}
-    executed = jd.dispatch(rules, now, state, dt.timedelta(minutes=30), runner=fake_runner)
+    jobs_to_run = jd.get_jobs_to_run(rules, now, state, dt.timedelta(minutes=30))
 
-    assert executed == ["daily"]
-    assert calls == [["echo", "daily"]]
-    assert "daily" in state
-    assert jd._parse_iso_datetime(state["daily"]) == now
+    assert len(jobs_to_run) == 1
+    assert jobs_to_run[0].name == "daily"
+    assert jobs_to_run[0].commands == (("echo", "daily"),)
 
 
-def test_dispatch_skips_when_already_run(monkeypatch):
+def test_get_jobs_to_run_skips_when_already_run():
     now = dt.datetime(2025, 1, 2, 6, 5, tzinfo=sm.TAIWAN_TZ)  # Thursday
     rule = _rule("daily", now.weekday(), 6)
     state = {"daily": dt.datetime(2025, 1, 2, 6, 1, tzinfo=sm.TAIWAN_TZ).isoformat()}
-    executed = jd.dispatch([rule], now, state, dt.timedelta(minutes=30))
+    jobs_to_run = jd.get_jobs_to_run([rule], now, state, dt.timedelta(minutes=30))
 
-    assert executed == []
+    assert jobs_to_run == []
 
 
 def test_load_rules_from_config(tmp_path):

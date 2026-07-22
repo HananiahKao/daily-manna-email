@@ -10,6 +10,7 @@ from unittest.mock import patch, MagicMock
 
 # Set up test environment
 os.environ["EMAIL_FROM"] = "test-from@example.com"
+os.environ["RECIPIENT_SOURCE"] = "email"
 os.environ["EMAIL_TO"] = "test-to@example.com"
 os.environ["SMTP_USER"] = "test-smtp@example.com"
 os.environ["DEBUG_MODE"] = "1"
@@ -37,7 +38,7 @@ def test_debug_mode_e2e():
 
         # Test send_email
         print("\nSending test email...")
-        sjzl.send_email("DEBUG MODE TEST", "This is a test email sent in debug mode.")
+        sjzl.send_email("DEBUG MODE TEST", "This is a test email sent in debug mode.", recipients=["test@example.com"])
 
         # Verify the call was made
         assert mock_gmail.called, "Gmail service should have been called"

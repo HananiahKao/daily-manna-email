@@ -172,8 +172,8 @@ class TestStmn1ContentSource:
         # Test with various selectors
         assert stmn1_source.get_content_url("1-1-1") == "https://mana.stmn1.com/books/2264/001.html#1"
         assert stmn1_source.get_content_url("1-18-7") == "https://mana.stmn1.com/books/2264/018.html#7"
-        assert stmn1_source.get_content_url("2-1-3") == "https://mana.stmn1.com/books/2264/019.html#3"
-        assert stmn1_source.get_content_url("15-18-7") == "https://mana.stmn1.com/books/2264/270.html#7"
+        assert stmn1_source.get_content_url("2-1-3") == "https://mana.stmn1.com/books/2264/020.html#3"
+        assert stmn1_source.get_content_url("15-18-7") == "https://mana.stmn1.com/books/2264/284.html#7"
 
     @patch("stmn1_content_source.requests.get")
     def test_stmn1_fetch_failure(self, mock_get, stmn1_source):
@@ -240,11 +240,11 @@ class TestStmn1ContentSource:
         assert stmn1_source._get_lesson_url(1, 18) == "https://mana.stmn1.com/books/2264/018.html"
 
         # Test with volume 2
-        assert stmn1_source._get_lesson_url(2, 1) == "https://mana.stmn1.com/books/2264/019.html"
-        assert stmn1_source._get_lesson_url(2, 18) == "https://mana.stmn1.com/books/2264/036.html"
+        assert stmn1_source._get_lesson_url(2, 1) == "https://mana.stmn1.com/books/2264/020.html"
+        assert stmn1_source._get_lesson_url(2, 18) == "https://mana.stmn1.com/books/2264/037.html"
 
         # Test with higher volumes
-        assert stmn1_source._get_lesson_url(15, 18) == "https://mana.stmn1.com/books/2264/270.html"
+        assert stmn1_source._get_lesson_url(15, 18) == "https://mana.stmn1.com/books/2264/284.html"
 
     def test_stmn1_absolute_lesson_number_calculation(self, stmn1_source):
         """Test that absolute lesson number calculation works correctly."""
@@ -253,11 +253,11 @@ class TestStmn1ContentSource:
         assert stmn1_source._get_absolute_lesson_number(1, 18) == 18
 
         # Test volume 2
-        assert stmn1_source._get_absolute_lesson_number(2, 1) == 19
-        assert stmn1_source._get_absolute_lesson_number(2, 18) == 36
+        assert stmn1_source._get_absolute_lesson_number(2, 1) == 20
+        assert stmn1_source._get_absolute_lesson_number(2, 18) == 37
 
         # Test higher volumes
-        assert stmn1_source._get_absolute_lesson_number(15, 18) == 270
+        assert stmn1_source._get_absolute_lesson_number(15, 18) == 284
 
     def test_stmn1_volume_index_url(self, stmn1_source):
         """Test that volume index URL generation works correctly."""

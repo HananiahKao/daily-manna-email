@@ -115,17 +115,16 @@ class TestTokenEncryption:
             with pytest.raises(TokenEncryptionError, match="corrupted or wrong encryption key"):
                 decrypt_token_data(encrypted)
 
-    def test_migrate_unencrypted_tokens(self, sample_token_data, encryption_key, tmp_path):
+    def test_migrate_unencrypted_tokens(self, sample_token_data, encryption_key, fs):
         """Test migration of unencrypted tokens."""
-        token_file = tmp_path / "token.json"
+        token_file = "/test/token.json"
 
-        # Create unencrypted token file
-        with open(token_file, 'w') as f:
-            json.dump(sample_token_data, f)
+        # Create unencrypted token file in fake file system
+        fs.create_file(token_file, contents=json.dumps(sample_token_data))
 
         with patch.dict(os.environ, {"OAUTH_ENCRYPTION_KEY": encryption_key}):
             # Migrate
-            result = migrate_unencrypted_tokens(str(token_file))
+            result = migrate_unencrypted_tokens(token_file)
             assert result is True
 
             # Verify file is now encrypted
@@ -137,18 +136,17 @@ class TestTokenEncryption:
             decrypted = decrypt_token_data(content)
             assert decrypted == sample_token_data
 
-    def test_migrate_already_encrypted_tokens(self, sample_token_data, encryption_key, tmp_path):
+    def test_migrate_already_encrypted_tokens(self, sample_token_data, encryption_key, fs):
         """Test migration when tokens are already encrypted."""
-        token_file = tmp_path / "token.json"
+        token_file = "/test/token.json"
 
-        # Create encrypted token file
+        # Create encrypted token file in fake file system
         with patch.dict(os.environ, {"OAUTH_ENCRYPTION_KEY": encryption_key}):
             encrypted = encrypt_token_data(sample_token_data)
-            with open(token_file, 'w') as f:
-                f.write(encrypted)
+            fs.create_file(token_file, contents=encrypted)
 
             # Try to migrate again
-            result = migrate_unencrypted_tokens(str(token_file))
+            result = migrate_unencrypted_tokens(token_file)
             assert result is False  # Should not migrate
 
     def test_migrate_nonexistent_file(self, encryption_key):

@@ -60,20 +60,20 @@ def migrate_subscribers(email_list: str, content_source: str, dry_run: bool = Fa
     for email in emails:
         try:
             if dry_run:
-                print(f"Would migrate: {email} -> {content_source}")
+                print(f"Would migrate subscriber to {content_source}")
                 migrated += 1
             else:
                 add_subscriber(email, content_source)
-                print(f"Migrated: {email}")
+                print("Migrated subscriber")
                 migrated += 1
         except DuplicateSubscriberError:
-            print(f"Already exists: {email}")
+            print("Subscriber already exists")
             migrated += 1  # Count as migrated since they already exist
         except SubscriberError as e:
-            print(f"Error migrating {email}: {e}")
+            print(f"Error migrating subscriber: {e}")
             errors += 1
         except Exception as e:
-            print(f"Unexpected error migrating {email}: {e}")
+            print(f"Unexpected error migrating subscriber: {e}")
             errors += 1
 
     return migrated, errors

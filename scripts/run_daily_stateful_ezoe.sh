@@ -44,12 +44,60 @@ print(json.loads(os.environ["RESULT_JSON"]).get("weekday", ""))
 PY
 )"
 
+CONTENT_SOURCE="$(RESULT_JSON="$RESULT_JSON" "$PYTHON_BIN" - <<'PY'
+import json, os
+print(json.loads(os.environ["RESULT_JSON"]).get("content_source", "ezoe"))
+PY
+)"
+
 export EZOE_SELECTOR="$SELECTOR"
 
-echo "Sending for $TARGET_DATE ($WEEKDAY_LABEL) selector: $EZOE_SELECTOR"
+echo "Sending for $TARGET_DATE ($WEEKDAY_LABEL) selector: $EZOE_SELECTOR from $CONTENT_SOURCE"
 
-if "$PYTHON_BIN" sjzl_daily_email.py; then
-  "$PYTHON_BIN" schedule_tasks.py mark-sent --date "$TARGET_DATE"
+# Don't let set -e exit script before we capture exit code
+"$PYTHON_BIN" sjzl_daily_email.py || PYTHON_EXIT=$?
+PYTHON_EXIT=${PYTHON_EXIT:-0}
+
+if [[ $PYTHON_EXIT -eq 0 ]]; then
+  # Enhanced JSON output for web app monitoring
+  cat <<EOF
+{
+  "job_type": "daily_email_send",
+  "status": "success",
+  "date": "$TARGET_DATE",
+  "weekday": "$WEEKDAY_LABEL",
+  "selector": "$SELECTOR",
+  "content_source": "$CONTENT_SOURCE",
+  "timestamp": "$(date -Iseconds)",
+  "details": {
+    "action": "sent_daily_email",
+    "recipient_count": "database_backed",
+    "content_type": "daily_devotional"
+  }
+}
+EOF
+  # Only mark as sent if NOT in test mode (test sends should be side-effect-free)
+  if ! [[ "${TEST_MODE:-}" == "1" ]]; then
+    "$PYTHON_BIN" schedule_tasks.py mark-sent --date "$TARGET_DATE"
+  fi
 else
+  # Issue #1 fix: Capture Python exit code BEFORE cat command
+  # Enhanced error JSON output with accurate exit code
+  cat <<EOF
+{
+  "job_type": "daily_email_send",
+  "status": "failed",
+  "date": "$TARGET_DATE",
+  "weekday": "$WEEKDAY_LABEL",
+  "selector": "$SELECTOR",
+  "content_source": "$CONTENT_SOURCE",
+  "timestamp": "$(date -Iseconds)",
+  "error": "email_send_failed",
+  "details": {
+    "exit_code": $PYTHON_EXIT,
+    "action": "attempted_send"
+  }
+}
+EOF
   exit 1
 fi

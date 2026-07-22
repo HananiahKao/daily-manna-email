@@ -26,6 +26,13 @@ class Stmn1ContentSource(ContentSource):
     def __init__(self, base_url: str = DEFAULT_STMN1_BASE):
         self.base_url = base_url
 
+    @classmethod
+    def get_display_name(cls, language: str = "zh") -> str:
+        """Return user-friendly display name."""
+        if language == "zh":
+            return "聖經之旅"
+        return "Bible Journey"
+
     def get_source_name(self) -> str:
         return "stmn1"
 
@@ -232,7 +239,13 @@ class Stmn1ContentSource(ContentSource):
     def _get_absolute_lesson_number(self, volume: int, lesson: int) -> int:
         """Calculate absolute lesson number from volume and lesson."""
         lessons_per_volume = 18
-        return (volume - 1) * lessons_per_volume + lesson
+        # Pattern: Each volume starts at (volume * 19) - 19 + 1, with 18 lessons
+        # Volume 1: 001-018 (18 lessons)
+        # Volume 2: 020-037 (18 lessons) - gap at 019
+        # Volume 3: 039-056 (18 lessons) - gap at 038
+        # Volume 4: 058-075 (18 lessons) - gap at 057, etc.
+        start = (volume * 19) - 19
+        return start + lesson
 
     def _fetch(self, url: str) -> Optional[str]:
         """Fetch URL content with error handling."""

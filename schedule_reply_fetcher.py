@@ -277,19 +277,13 @@ def _send_admin_email(recipients: Sequence[str], subject: str, text_body: str, h
         return
     if sjzl is None:
         raise RuntimeError("sjzl_daily_email import failed; cannot send confirmation email")
-    original_email_to = os.environ.get("EMAIL_TO")
     original_email_from = os.environ.get("EMAIL_FROM")
     admin_from = os.getenv("ADMIN_SUMMARY_FROM")
     try:
-        os.environ["EMAIL_TO"] = ",".join(recipients)
         if admin_from:
             os.environ["EMAIL_FROM"] = admin_from
-        sjzl.send_email(subject, text_body, html_body=html_body)  # Recipients logged by send_email
+        sjzl.send_email(subject, text_body, recipients=list(recipients), html_body=html_body)
     finally:
-        if original_email_to is None:
-            os.environ.pop("EMAIL_TO", None)
-        else:
-            os.environ["EMAIL_TO"] = original_email_to
         if admin_from:
             if original_email_from is None:
                 os.environ.pop("EMAIL_FROM", None)

@@ -31,11 +31,14 @@ from email.header import Header
 from email.utils import formataddr
 from email import encoders
 from email.charset import Charset, QP
-from typing import Optional, Tuple, List, Optional as TypingOptional, cast
+from typing import Optional, Tuple, List, Dict, Optional as TypingOptional, cast
 from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+import delivery_tracker
+import gmail_recovery
+import schedule_manager as sm
 
 # -------- CSS extraction for ezoe mode --------
 
@@ -211,9 +214,8 @@ def _wrap_email_html_with_css(content_html: str, css_text: str) -> str:
 # -------- Config & Logging --------
 
 SJZL_BASE = os.getenv("SJZL_BASE", "https://four.soqimp.com/books/2264")
-# Optional alternate source: ezoe.work via standardized selector "<volume>-<lesson>-<day>".
-EZOe_SELECTOR = os.getenv("EZOE_SELECTOR")  # e.g., "2-1-3" (週三)
-EZOe_BASE = os.getenv("EZOE_BASE", "https://ezoe.work/books/2")
+# EZOE_SELECTOR and EZOE_BASE are read fresh inside run_once() so that environment
+# variables set after module import (e.g. in tests via monkeypatch) are respected.
 INDEX_PATTERN = re.compile(r"^index(\d{2})\.html$")  # e.g., index12.html
 LESSON_PATTERN = re.compile(r"^(\d{2,3})\.html$")    # e.g., 210.html
 
@@ -446,56 +448,93 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
 
 # -------- Email sending --------
 
-def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, content_source: TypingOptional[str] = None) -> List[str]:
+def send_email(subject: str, body: str, recipients: List[str], html_body: TypingOptional[str] = None, is_test: bool = False, content_source: TypingOptional[str] = None, job_id: TypingOptional[str] = None) -> Dict[str, str]:
     """
     Send email using Gmail API to each recipient individually.
-    Returns the list of recipients the email was sent to.
+    Skips recipients already sent to today (idempotent recovery).
+    Returns a dictionary mapping recipient emails to their Gmail message IDs.
 
     Args:
         subject: Email subject
         body: Plain text email body
+        recipients: List of email addresses to send to (caller determines recipients)
         html_body: Optional HTML email body
-        content_source: Content source ('ezoe' or 'wix') to determine recipients from database
+        is_test: If True, mark email as test (prepend [SYSTEM TEST] to subject, add badge to body)
+                 Also checked via TEST_MODE environment variable
+        content_source: Content source identifier (e.g., 'stmn1', 'ezoe') for header tracking
+        job_id: Job identifier for header tracking (e.g., 'stmn1-bible-journey-daily-send')
+
+    Returns:
+        Dict[str, str]: {recipient_email: gmail_message_id} for successfully sent emails
     """
-    email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
-
-    # Debug mode: send to EMAIL_FROM instead of subscribers
-    debug_mode = os.getenv("DEBUG_MODE") not in (None, "", "0", "false", "False")
-    if debug_mode:
-        recipients = [email_from] if email_from else []
-    else:
-        # Get recipients from subscriber database
-        if content_source:
-            try:
-                from app.subscriber_manager import get_subscribers
-                recipients = get_subscribers(content_source)
-                if not recipients:
-                    logger.warning("No active subscribers found for content source: %s", content_source)
-            except Exception as e:
-                logger.error("Failed to get subscribers from database: %s", e)
-                # Fallback to EMAIL_TO for backward compatibility
-                email_to_raw = os.getenv("EMAIL_TO", "")
-                recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
-        else:
-            # Fallback: use EMAIL_TO environment variable for backward compatibility
-            email_to_raw = os.getenv("EMAIL_TO", "")
-            recipients = [addr.strip() for addr in email_to_raw.split(",") if addr.strip()]
-
     if not recipients:
-        raise ValueError("No recipients configured. Set EMAIL_TO or ensure subscribers exist in database.")
+        raise ValueError("recipients list cannot be empty")
+
+    email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
+    today = sm.taipei_today()
+
+    # Check TEST_MODE environment variable (set by test-send API)
+    if os.getenv("TEST_MODE", "").lower() in ("1", "true", "yes"):
+        is_test = True
+
+    # Modify subject and html_body for test sends
+    if is_test:
+        subject = f"[SYSTEM TEST] {subject}"
+        # Add test badge to top of HTML body
+        test_badge_html = (
+            '<div style="background-color: #fffacd; border-left: 4px solid #ffd700; padding: 12px; '
+            'margin-bottom: 16px; border-radius: 8px;">'
+            '<strong>SYSTEM TEST EMAIL</strong><br>'
+            'This is a test email from Daily Manna Email system testing. Please disregard.'
+            '</div>'
+        )
+        if html_body:
+            html_body = test_badge_html + html_body
+        else:
+            # If no HTML body, create one with just the badge
+            html_body = f'{test_badge_html}<p>{body.replace(chr(10), "<br>")}</p>'
+
+    # Backfill any missing delivery records from Gmail (crash recovery)
+    gmail_recovery.ensure_no_duplicates_on_startup(recipients, today, content_source=content_source)
+
+    # Filter out already-delivered recipients for idempotent recovery
+    # Test sends bypass idempotency (don't record delivery) to allow repeated testing
+    if is_test:
+        recipients_to_send = recipients
+        logger.info("TEST MODE: Sending to %d recipients (skipping idempotency check)", len(recipients))
+    else:
+        recipients_to_send = delivery_tracker.get_missing_recipients(recipients, today, content_source=content_source)
+        if recipients_to_send:
+            logger.info("Sending to %d recipients (skipped %d already delivered today by %s)",
+                       len(recipients_to_send), len(recipients) - len(recipients_to_send), content_source or "unknown")
+        else:
+            logger.info("All %d recipients already delivered today, skipping send", len(recipients))
 
     try:
         service = get_gmail_service()
-        sent_count = 0
+        sent_messages: Dict[str, str] = {}  # {recipient: gmail_message_id}
 
-        # Send individual email to each recipient
-        for recipient in recipients:
+        # Send individual email to each missing recipient
+        for recipient in recipients_to_send:
             # Create message for this individual recipient
             msg = MIMEMultipart("alternative")
             msg["From"] = email_from
             msg["To"] = recipient  # Individual recipient
             msg["Subject"] = subject
             msg["Content-Language"] = os.getenv("CONTENT_LANGUAGE", "zh-Hant")
+
+            # Add tracking headers for delivery verification and debugging
+            if content_source:
+                msg["X-Content-Source"] = content_source
+            if job_id:
+                msg["X-Job-Id"] = job_id
+            msg["X-Service"] = "daily-manna-email"
+            try:
+                import subprocess
+                commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()[:7]
+                msg["X-Commit-Hash"] = commit_hash
+            except Exception:
+                pass  # Silently fail if git commit hash unavailable
 
             # Plain-text fallback part
             text_part = MIMEText(body, "plain", "utf-8")
@@ -514,19 +553,25 @@ def send_email(subject: str, body: str, html_body: TypingOptional[str] = None, c
                     'raw': raw_message
                 }
                 sent_message = service.users().messages().send(userId='me', body=message).execute()
-                sent_count += 1
-                logger.info("Email sent to %s, message ID: %s", recipient, sent_message.get('id'))
+                message_id = sent_message.get('id')
+                sent_messages[recipient] = message_id
+
+                # Record delivery immediately after successful send (idempotent)
+                # Skip recording for test sends to allow repeated testing
+                if not is_test:
+                    delivery_tracker.record_delivery(recipient, today, message_id, content_source=content_source)
+                logger.info("Email sent, message ID: %s", message_id)
             except Exception as e:
-                logger.error("Failed to send email to %s: %s", recipient, e)
+                logger.error("Failed to send email: %s", e)
                 # Continue with other recipients even if one fails
 
-        logger.info("Email sent successfully to %d out of %d recipients", sent_count, len(recipients))
+        logger.info("Email sent successfully to %d out of %d recipients", len(sent_messages), len(recipients_to_send))
 
     except Exception as e:
         logger.error("Failed to send emails via Gmail API: %s", e)
         raise
 
-    return recipients
+    return sent_messages
 
 
 # -------- Main job --------
@@ -538,7 +583,10 @@ def run_once() -> int:
       - Default (SJZL): discover latest from four.soqimp.com and send plain text.
       - Selector HTML mode (EZOE_SELECTOR set): fetch ezoe.work lesson day HTML and send rich HTML with plain-text fallback.
     """
-    today = dt.datetime.now().strftime("%Y-%m-%d")
+    today = sm.taipei_today().isoformat()
+    content_source = os.getenv("CONTENT_SOURCE")  # Read from dispatch rules
+    EZOe_SELECTOR = os.getenv("EZOE_SELECTOR")
+    EZOe_BASE = os.getenv("EZOE_BASE", "https://ezoe.work/books/2")
     abs_url = None  # Initialize for footer generation
     # If selector mode is enabled, use ezoe scraper
     if EZOe_SELECTOR:
@@ -694,9 +742,26 @@ def run_once() -> int:
         # Convert visible content to zh-TW (server side) for both HTML and text
         html_with_css = _maybe_convert_zh_cn_to_zh_tw(html_with_css)
         body = _maybe_convert_zh_cn_to_zh_tw(body)
-        recipients = send_email(subject, body, html_body=html_with_css, content_source="ezoe")
-        logger.info("HTML email (ezoe) sent to %s", ", ".join(recipients))
-        return 0
+        from app.subscriber_manager import get_subscribers
+        source_name = active_source.get_source_name()
+        recipients_list = get_subscribers(source_name)
+        # In DEBUG_MODE, send only to EMAIL_FROM instead of subscribers
+        debug_mode = _debug_enabled()
+        if debug_mode:
+            email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
+            recipients_list = [email_from] if email_from else recipients_list
+        recipients = send_email(subject, body, recipients=recipients_list, html_body=html_with_css, content_source=content_source)
+        logger.info("HTML email (ezoe) sent to %d recipients", len(recipients))
+        # Issue #4: Exit code reflects delivery outcome
+        # Exit 0: All subscribers delivered (via send + backfill recovery)
+        # Exit 2: Partial delivery (some subscribers didn't receive)
+        # Exit 1: No subscribers received (complete failure)
+        if len(recipients) == len(recipients_list):
+            return 0  # All scheduled recipients received email
+        elif len(recipients) > 0:
+            return 2  # Partial success - some subscribers missing
+        else:
+            return 1  # No recipients received email
     # Allow override for testing SMTP without discovery/fetch variability
     test_url = os.getenv("TEST_LESSON_URL")
     if test_url:
@@ -745,8 +810,15 @@ def run_once() -> int:
     _debug_preview("SJZL_SUBJECT", subject)
     _debug_preview("SJZL_BODY", body)
 
-    recipients = send_email(subject, body, html_body=html_body, content_source="ezoe")
-    logger.info("Email sent to %s", ", ".join(recipients))
+    from app.subscriber_manager import get_subscribers
+    recipients_list = get_subscribers("ezoe")
+    # In DEBUG_MODE, send only to EMAIL_FROM instead of subscribers
+    debug_mode = _debug_enabled()
+    if debug_mode:
+        email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
+        recipients_list = [email_from] if email_from else recipients_list
+    recipients = send_email(subject, body, recipients=recipients_list, html_body=html_body, content_source=content_source)
+    logger.info("Email sent to %d recipients", len(recipients))
     return 0
 
 
