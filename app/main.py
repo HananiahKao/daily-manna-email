@@ -1744,8 +1744,12 @@ def create_app() -> FastAPI:
             delivered_dates = []
 
             for date_str in sorted(deliveries.keys(), reverse=True):
-                if email in deliveries[date_str]:
-                    delivered_dates.append(date_str)
+                for key in deliveries[date_str].keys():
+                    # Handle both old format (email) and new format (source:email)
+                    recipient = key.split(":", 1)[-1] if ":" in key else key
+                    if recipient == email:
+                        delivered_dates.append(date_str)
+                        break  # Each date only appears once
 
             return JSONResponse({
                 "email": email,
