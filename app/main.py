@@ -18,7 +18,7 @@ import requests
 import asyncio
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -1357,8 +1357,8 @@ def create_app() -> FastAPI:
             finally:
                 await sse_manager.remove_client(queue)
 
-        return Response(
-            content=event_generator(),
+        return StreamingResponse(
+            event_generator(),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

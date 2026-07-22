@@ -122,4 +122,4 @@ def test_send_email_recovery_idempotent(mock_gmail, mock_record, mock_missing, m
     assert recipients == {"bob@example.com": "msg_bob"}
 
     # Verify Bob's delivery was recorded
-    mock_record.assert_called_once_with("bob@example.com", today, "msg_bob")
+    mock_record.assert_called_once_with("bob@example.com", today, "msg_bob", content_source=None)

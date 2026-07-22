@@ -146,7 +146,7 @@ def test_ensure_no_duplicates_on_startup_calls_backfill():
 
         gmail_recovery.ensure_no_duplicates_on_startup(recipients, today)
 
-        mock_backfill.assert_called_once_with(mock_service, recipients, today)
+        mock_backfill.assert_called_once_with(mock_service, recipients, today, content_source=None)
 
 
 def test_ensure_no_duplicates_on_startup_handles_error():

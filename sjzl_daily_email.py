@@ -448,7 +448,7 @@ def extract_readable_text(lesson_html: str) -> Tuple[str, str]:
 
 # -------- Email sending --------
 
-def send_email(subject: str, body: str, recipients: List[str], html_body: TypingOptional[str] = None, is_test: bool = False) -> Dict[str, str]:
+def send_email(subject: str, body: str, recipients: List[str], html_body: TypingOptional[str] = None, is_test: bool = False, content_source: TypingOptional[str] = None, job_id: TypingOptional[str] = None) -> Dict[str, str]:
     """
     Send email using Gmail API to each recipient individually.
     Skips recipients already sent to today (idempotent recovery).
@@ -461,6 +461,8 @@ def send_email(subject: str, body: str, recipients: List[str], html_body: Typing
         html_body: Optional HTML email body
         is_test: If True, mark email as test (prepend [SYSTEM TEST] to subject, add badge to body)
                  Also checked via TEST_MODE environment variable
+        content_source: Content source identifier (e.g., 'stmn1', 'ezoe') for header tracking
+        job_id: Job identifier for header tracking (e.g., 'stmn1-bible-journey-daily-send')
 
     Returns:
         Dict[str, str]: {recipient_email: gmail_message_id} for successfully sent emails
@@ -493,7 +495,7 @@ def send_email(subject: str, body: str, recipients: List[str], html_body: Typing
             html_body = f'{test_badge_html}<p>{body.replace(chr(10), "<br>")}</p>'
 
     # Backfill any missing delivery records from Gmail (crash recovery)
-    gmail_recovery.ensure_no_duplicates_on_startup(recipients, today)
+    gmail_recovery.ensure_no_duplicates_on_startup(recipients, today, content_source=content_source)
 
     # Filter out already-delivered recipients for idempotent recovery
     # Test sends bypass idempotency (don't record delivery) to allow repeated testing
@@ -501,10 +503,10 @@ def send_email(subject: str, body: str, recipients: List[str], html_body: Typing
         recipients_to_send = recipients
         logger.info("TEST MODE: Sending to %d recipients (skipping idempotency check)", len(recipients))
     else:
-        recipients_to_send = delivery_tracker.get_missing_recipients(recipients, today)
+        recipients_to_send = delivery_tracker.get_missing_recipients(recipients, today, content_source=content_source)
         if recipients_to_send:
-            logger.info("Sending to %d recipients (skipped %d already delivered today)",
-                       len(recipients_to_send), len(recipients) - len(recipients_to_send))
+            logger.info("Sending to %d recipients (skipped %d already delivered today by %s)",
+                       len(recipients_to_send), len(recipients) - len(recipients_to_send), content_source or "unknown")
         else:
             logger.info("All %d recipients already delivered today, skipping send", len(recipients))
 
@@ -520,6 +522,19 @@ def send_email(subject: str, body: str, recipients: List[str], html_body: Typing
             msg["To"] = recipient  # Individual recipient
             msg["Subject"] = subject
             msg["Content-Language"] = os.getenv("CONTENT_LANGUAGE", "zh-Hant")
+
+            # Add tracking headers for delivery verification and debugging
+            if content_source:
+                msg["X-Content-Source"] = content_source
+            if job_id:
+                msg["X-Job-Id"] = job_id
+            msg["X-Service"] = "daily-manna-email"
+            try:
+                import subprocess
+                commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()[:7]
+                msg["X-Commit-Hash"] = commit_hash
+            except Exception:
+                pass  # Silently fail if git commit hash unavailable
 
             # Plain-text fallback part
             text_part = MIMEText(body, "plain", "utf-8")
@@ -544,7 +559,7 @@ def send_email(subject: str, body: str, recipients: List[str], html_body: Typing
                 # Record delivery immediately after successful send (idempotent)
                 # Skip recording for test sends to allow repeated testing
                 if not is_test:
-                    delivery_tracker.record_delivery(recipient, today, message_id)
+                    delivery_tracker.record_delivery(recipient, today, message_id, content_source=content_source)
                 logger.info("Email sent, message ID: %s", message_id)
             except Exception as e:
                 logger.error("Failed to send email: %s", e)
@@ -569,6 +584,7 @@ def run_once() -> int:
       - Selector HTML mode (EZOE_SELECTOR set): fetch ezoe.work lesson day HTML and send rich HTML with plain-text fallback.
     """
     today = sm.taipei_today().isoformat()
+    content_source = os.getenv("CONTENT_SOURCE")  # Read from dispatch rules
     EZOe_SELECTOR = os.getenv("EZOE_SELECTOR")
     EZOe_BASE = os.getenv("EZOE_BASE", "https://ezoe.work/books/2")
     abs_url = None  # Initialize for footer generation
@@ -734,7 +750,7 @@ def run_once() -> int:
         if debug_mode:
             email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
             recipients_list = [email_from] if email_from else recipients_list
-        recipients = send_email(subject, body, recipients=recipients_list, html_body=html_with_css)
+        recipients = send_email(subject, body, recipients=recipients_list, html_body=html_with_css, content_source=content_source)
         logger.info("HTML email (ezoe) sent to %d recipients", len(recipients))
         # Issue #4: Exit code reflects delivery outcome
         # Exit 0: All subscribers delivered (via send + backfill recovery)
@@ -801,7 +817,7 @@ def run_once() -> int:
     if debug_mode:
         email_from = os.getenv("EMAIL_FROM", os.environ.get("SMTP_USER", ""))
         recipients_list = [email_from] if email_from else recipients_list
-    recipients = send_email(subject, body, recipients=recipients_list, html_body=html_body)
+    recipients = send_email(subject, body, recipients=recipients_list, html_body=html_body, content_source=content_source)
     logger.info("Email sent to %d recipients", len(recipients))
     return 0
 

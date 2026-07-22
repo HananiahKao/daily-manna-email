@@ -27,6 +27,7 @@ def _search_gmail_sent_to_recipient(
     service,
     recipient: str,
     date: dt.date,
+    content_source: Optional[str] = None,
 ) -> Optional[str]:
     """Search Gmail sent folder for message to recipient on given date.
 
@@ -34,9 +35,10 @@ def _search_gmail_sent_to_recipient(
         service: Gmail API service object
         recipient: Email address to search for
         date: Date to search (YYYY-MM-DD)
+        content_source: Optional content source to verify (e.g., 'stmn1', 'ezoe')
 
     Returns:
-        Gmail message ID if found, None otherwise
+        Gmail message ID if found and content_source matches, None otherwise
     """
     try:
         # Gmail query: search sent folder for emails to this recipient on this date
@@ -55,13 +57,49 @@ def _search_gmail_sent_to_recipient(
 
         messages = results.get('messages', [])
         if messages:
-            # Return the most recent message ID
-            message_id = messages[0].get('id')
-            logger.info(
-                "Found existing message on %s: %s (crash recovery)",
-                date.isoformat(), message_id
-            )
-            return message_id
+            # Verify content source if specified
+            if content_source:
+                for msg_data in messages:
+                    message_id = msg_data.get('id')
+                    try:
+                        # Fetch message headers to verify content source
+                        msg = service.users().messages().get(
+                            userId='me',
+                            id=message_id,
+                            format='metadata',
+                            metadataHeaders=['X-Content-Source']
+                        ).execute()
+
+                        headers = msg.get('payload', {}).get('headers', [])
+                        msg_content_source = next(
+                            (h.get('value') for h in headers if h.get('name') == 'X-Content-Source'),
+                            None
+                        )
+
+                        if msg_content_source == content_source:
+                            logger.info(
+                                "Found matching message on %s: %s (content_source=%s, crash recovery)",
+                                date.isoformat(), message_id, content_source
+                            )
+                            return message_id
+                    except Exception as e:
+                        logger.debug("Failed to check message headers: %s", e)
+                        continue
+
+                # No matching content source found
+                logger.debug(
+                    "Found messages for %s on %s but none match content_source=%s",
+                    recipient, date.isoformat(), content_source
+                )
+                return None
+            else:
+                # No content source specified, return first message (backward compatibility)
+                message_id = messages[0].get('id')
+                logger.info(
+                    "Found existing message on %s: %s (crash recovery)",
+                    date.isoformat(), message_id
+                )
+                return message_id
 
         return None
 
@@ -78,6 +116,7 @@ def backfill_missing_deliveries(
     recipients: list[str],
     date: dt.date,
     path=None,
+    content_source: Optional[str] = None,
 ) -> dict[str, str]:
     """Backfill delivery records by querying Gmail for crashed sends.
 
@@ -106,15 +145,15 @@ def backfill_missing_deliveries(
     logger.info("Backfilling %d missing recipient(s) from Gmail sent folder", len(missing))
 
     for recipient in missing:
-        message_id = _search_gmail_sent_to_recipient(service, recipient, date)
+        message_id = _search_gmail_sent_to_recipient(service, recipient, date, content_source)
 
         if message_id:
             # Backfill the delivery record
-            delivery_tracker.record_delivery(recipient, date, message_id, path=path)
+            delivery_tracker.record_delivery(recipient, date, message_id, path=path, content_source=content_source)
             backfilled[recipient] = message_id
             logger.info(
-                "Backfilled delivery record with message_id=%s",
-                message_id
+                "Backfilled delivery record with message_id=%s (source=%s)",
+                message_id, content_source or "unknown"
             )
 
     if backfilled:
@@ -129,6 +168,7 @@ def backfill_missing_deliveries(
 def ensure_no_duplicates_on_startup(
     recipients: list[str],
     date: dt.date,
+    content_source: Optional[str] = None,
 ) -> None:
     """Ensure delivery records are complete before sending.
 
@@ -138,10 +178,11 @@ def ensure_no_duplicates_on_startup(
     Args:
         recipients: Full list of recipients to send to
         date: Date of the send (typically today)
+        content_source: Optional content source to verify (e.g., 'stmn1', 'ezoe')
     """
     try:
         service = get_gmail_service()
-        backfill_missing_deliveries(service, recipients, date)
+        backfill_missing_deliveries(service, recipients, date, content_source=content_source)
     except Exception as e:
         logger.error(
             "Failed to backfill delivery records: %s (proceeding with normal send)",
